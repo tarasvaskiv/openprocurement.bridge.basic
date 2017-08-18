@@ -72,7 +72,12 @@ DEFAULTS = {
     'filter_workers_pool': 1,
     'bulk_query_interval': 5,
     'bulk_query_limit': 1000,
-    'couch_url': 'http://127.0.0.1:5984',
+    'couch_url': {
+        'host': "127.0.0.1",
+        'port': 5984,
+        'user': "admin",
+        'password': "admin"
+    },
     'db_name': 'edge_db',
     'perfomance_window': 300
 }
@@ -139,9 +144,15 @@ class EdgeDataBridge(object):
         else:
             raise DataBridgeConfigError('In config dictionary empty or missing'
                                         ' \'tenders_api_server\'')
-        self.db = prepare_couchdb(self.couch_url, self.db_name, logger)
+        user = self.config['main']['couch_url'].get('user', '')
+        password = self.config['main']['couch_url'].get('password', '')
+        if (user and password):
+            self.couch_url = "http://{user}:{password}@{host}:{port}".format(**self.config['main']['couch_url'])
+        else:
+            self.couch_url = "http://{host}:{port}".format(**self.config['main']['couch_url'])
         db_url = self.couch_url + '/' + self.db_name
         prepare_couchdb_views(db_url, self.workers_config['resource'], logger)
+        self.db = prepare_couchdb(self.couch_url, self.db_name, logger)
         self.server = Server(self.couch_url,
                              session=Session(retry_delays=range(10)))
         self.view_path = '_design/{}/_view/by_dateModified'.format(
