@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 from binascii import hexlify, unhexlify
-from cornice.resource import resource, view
+from cornice.resource import view
 from cornice.util import json_error
 from couchapp.dispatch import dispatch
 from couchdb import Server, Session
@@ -20,7 +20,10 @@ PKG = get_distribution(__package__)
 LOGGER = getLogger(PKG.project_name)
 
 TZ = timezone(os.environ['TZ'] if 'TZ' in os.environ else 'Europe/Kiev')
-VERSION = '{}.{}'.format(int(PKG.parsed_version[0]), int(PKG.parsed_version[1]) if PKG.parsed_version[1].isdigit() else 0)
+VERSION = '{}.{}'.format(
+    int(PKG.parsed_version[0]),
+    int(PKG.parsed_version[1]) if PKG.parsed_version[1].isdigit() else 0
+)
 ROUTE_PREFIX = '/api/{}'.format(VERSION)
 SERVICE_FIELDS = ('__parent__', '_rev', '_id', 'doc_type')
 json_view = partial(view, renderer='json')
@@ -58,7 +61,8 @@ def prepare_couchdb(couch_url, db_name, logger):
         logger.error('Database error: {}'.format(e.message))
         raise DataBridgeConfigError(e.strerror)
 
-    validate_doc = db.get(VALIDATE_BULK_DOCS_ID, {'_id': VALIDATE_BULK_DOCS_ID})
+    validate_doc = db.get(VALIDATE_BULK_DOCS_ID,
+                          {'_id': VALIDATE_BULK_DOCS_ID})
     if validate_doc.get('validate_doc_update') != VALIDATE_BULK_DOCS_UPDATE:
         validate_doc['validate_doc_update'] = VALIDATE_BULK_DOCS_UPDATE
         db.save(validate_doc)
@@ -208,7 +212,8 @@ def fix_url(item, app_url, settings={}):
         ]
     elif isinstance(item, dict):
         if "format" in item and "url" in item and '?download=' in item['url']:
-            path = item["url"] if item["url"].startswith('/') else '/' + '/'.join(item['url'].split('/')[5:])
+            path = item["url"] if item["url"].startswith('/') \
+                else '/' + '/'.join(item['url'].split('/')[5:])
             item["url"] = app_url + route_prefix(settings) + path
             return
         [

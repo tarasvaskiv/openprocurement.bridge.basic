@@ -13,9 +13,9 @@ from couchdb import Server, Session
 from httplib import IncompleteRead
 from yaml import load
 from urlparse import urlparse
-from openprocurement_client.sync import ResourceFeeder
 from openprocurement_client.exceptions import RequestFailed
-from openprocurement_client.registry_client import RegistryClient as APIClient
+from openprocurement_client.clients import APIResourceClient as APIClient
+from openprocurement_client.resources.sync import ResourceFeeder
 from .utils import (
     prepare_couchdb,
     prepare_couchdb_views,
@@ -147,9 +147,11 @@ class EdgeDataBridge(object):
         user = self.config['main']['couch_url'].get('user', '')
         password = self.config['main']['couch_url'].get('password', '')
         if (user and password):
-            self.couch_url = "http://{user}:{password}@{host}:{port}".format(**self.config['main']['couch_url'])
+            self.couch_url = "http://{user}:{password}@{host}:{port}".format(
+                **self.config['main']['couch_url'])
         else:
-            self.couch_url = "http://{host}:{port}".format(**self.config['main']['couch_url'])
+            self.couch_url = "http://{host}:{port}".format(
+                **self.config['main']['couch_url'])
         db_url = self.couch_url + '/' + self.db_name
         prepare_couchdb_views(db_url, self.workers_config['resource'], logger)
         self.db = prepare_couchdb(self.couch_url, self.db_name, logger)
