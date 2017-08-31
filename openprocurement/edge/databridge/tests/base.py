@@ -4,8 +4,8 @@ import webtest
 import os
 from datetime import datetime, timedelta
 from copy import deepcopy
-from openregistry.labot.utils import get_now
-from openregistry.labot.utils import push_views
+from openprocurement.edge.databridge.utils import get_now
+from openprocurement.edge.databridge.utils import push_views
 from uuid import uuid4
 
 now = datetime.now()
@@ -80,7 +80,8 @@ test_tender_data = {
                 {
                     "scheme": u"ДКПП",
                     "id": u"17.21.1",
-                    "description": u"папір і картон гофровані, паперова й картонна тара"
+                    "description":
+                        u"папір і картон гофровані, паперова й картонна тара"
                 }
             ],
             "unit": {
@@ -132,7 +133,8 @@ test_contract_data = {
                 {
                     u"scheme": u"ДКПП",
                     u"id": u"17.21.1",
-                    u"description": u"папір і картон гофровані, паперова й картонна тара"
+                    u"description":
+                        u"папір і картон гофровані, паперова й картонна тара"
                 }
             ],
             u"deliveryAddress": {
@@ -327,7 +329,9 @@ test_plan_data = {
 }
 
 
-test_award = {'suppliers': [test_organization], 'status': 'pending', 'bid_id': ''}
+test_award = {'suppliers': [test_organization],
+              'status': 'pending',
+              'bid_id': ''}
 
 test_complaint = {
     'title': 'complaint title',
@@ -371,13 +375,15 @@ class BaseWebTest(unittest.TestCase):
     def setUpClass(cls):
         for _ in range(10):
             try:
-                cls.app = webtest.TestApp("config:tests.ini", relative_to=cls.relative_to)
+                cls.app = webtest.TestApp("config:tests.ini",
+                                          relative_to=cls.relative_to)
             except:
                 pass
             else:
                 break
         else:
-            cls.app = webtest.TestApp("config:tests.ini", relative_to=cls.relative_to)
+            cls.app = webtest.TestApp("config:tests.ini",
+                                      relative_to=cls.relative_to)
         cls.app.RequestClass = PrefixedRequestClass
         cls.couchdb_server = cls.app.app.registry.couchdb_server
         cls.db = cls.app.app.registry.db
@@ -403,7 +409,8 @@ class BaseWebTest(unittest.TestCase):
         views_path += 'couch_views'
         couch_url = self.app.app.registry.settings['couchdb.url'] + db.name
         push_views(couchapp_path=views_path + '/tenders', couch_url=couch_url)
-        push_views(couchapp_path=views_path + '/contracts', couch_url=couch_url)
+        push_views(couchapp_path=views_path + '/contracts',
+                   couch_url=couch_url)
         push_views(couchapp_path=views_path + '/plans', couch_url=couch_url)
         push_views(couchapp_path=views_path + '/auctions', couch_url=couch_url)
         # import pdb; pdb.set_trace()
@@ -470,10 +477,13 @@ class TenderBaseWebTest(BaseWebTest):
                     award_complaint['date'] = get_now().isoformat()
                     data['awards'][0]['complaints'] = [award_complaint]
                     if self.initial_award_complaint_document:
-                        award_complaint_document = deepcopy(self.initial_award_complaint_document)
+                        award_complaint_document = deepcopy(
+                            self.initial_award_complaint_document)
                         award_complaint_document['id'] = uuid4().hex
-                        award_complaint_document['dateModified'] = get_now().isoformat()
-                        data['awards'][0]['complaints'][0]['documents'] = [award_complaint_document]
+                        award_complaint_document['dateModified'] = \
+                            get_now().isoformat()
+                        data['awards'][0]['complaints'][0]['documents'] = \
+                            [award_complaint_document]
         if self.initial_document:
             document = deepcopy(self.initial_document)
             document['id'] = uuid4().hex

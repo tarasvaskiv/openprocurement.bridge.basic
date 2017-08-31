@@ -12,11 +12,10 @@ from openprocurement_client.exceptions import (
     RequestFailed,
     ResourceNotFound as RNF
 )
-from openregistry.labot.workers import ResourceItemWorker
+from openprocurement.edge.databridge.workers import ResourceItemWorker, logger
 import logging
-import sys
 from StringIO import StringIO
-from openregistry.labot.workers import logger
+
 
 logger.setLevel(logging.DEBUG)
 
@@ -161,7 +160,7 @@ class TestResourceItemWorker(unittest.TestCase):
         self.assertEqual(resource_item, None)
         del worker
 
-    @patch('openprocurement_client.client.TendersClient')
+    @patch('openprocurement.edge.databridge.databridge.APIClient')
     def test__get_resource_item_from_public(self, mock_api_client):
         item = {
             'id': uuid.uuid4().hex,
@@ -400,7 +399,8 @@ class TestResourceItemWorker(unittest.TestCase):
         worker_thread.shutdown()
         sleep(3)
 
-    @patch('openregistry.labot.workers.ResourceItemWorker._get_resource_item_from_public')
+    @patch('openprocurement.edge.databridge.workers.ResourceItemWorker.'
+           '_get_resource_item_from_public')
     def test__run(self, mock_get_from_public):
         self.queue = Queue()
         self.retry_queue = Queue()
