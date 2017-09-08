@@ -4,8 +4,8 @@ import webtest
 import os
 from datetime import datetime, timedelta
 from copy import deepcopy
-from openprocurement.edge.databridge.utils import get_now
-from openprocurement.edge.databridge.utils import push_views
+from openprocurement.bridge.basic.utils import get_now
+from openprocurement.bridge.basic.utils import push_views
 from uuid import uuid4
 
 now = datetime.now()

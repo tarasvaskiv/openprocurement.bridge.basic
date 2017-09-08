@@ -30,14 +30,14 @@ test_requires = requires + [
 
 entry_points = {
     'console_scripts': [
-        'databridge = openprocurement.edge.databridge.databridge:main'
+        'databridge = openprocurement.bridge.basic.databridge:main'
     ]
 }
 
 
-setup(name='openprocurement.edge.databridge',
+setup(name='openprocurement.bridge.basic',
       version=version,
-      description="openprocurement.edge.databridge",
+      description="openprocurement.bridge.basic",
       long_description=open("README.txt").read() + "\n",
       classifiers=[
           "Framework :: Pylons",

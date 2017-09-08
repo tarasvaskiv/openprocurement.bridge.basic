@@ -332,7 +332,7 @@ class ResourceItemWorker(Greenlet):
                 if (resource_item_doc and
                         resource_item_doc['dateModified'] >=
                         queue_resource_item['dateModified']):
-                    logger.debug('Ignored {} {} QUEUE - {}, EDGE - {}'.format(
+                    logger.debug('Ignored {} {} QUEUE - {}, BASIC - {}'.format(
                         self.config['resource'][:-1],
                         queue_resource_item['id'],
                         queue_resource_item['dateModified'],

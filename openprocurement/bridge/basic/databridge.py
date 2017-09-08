@@ -63,7 +63,7 @@ DEFAULTS = {
     'retry_resource_items_queue_size': -1,
     'filter_workers_count': 1,
     'watch_interval': 10,
-    'user_agent': 'edge.multi',
+    'user_agent': 'basicbridge.multi',
     'log_db_name': 'logs_db',
     'resource_items_queue_size': 10000,
     'input_queue_size': 10000,
@@ -78,17 +78,17 @@ DEFAULTS = {
         'user': "admin",
         'password': "admin"
     },
-    'db_name': 'edge_db',
+    'db_name': 'bridge_db',
     'perfomance_window': 300
 }
 
 
-class EdgeDataBridge(object):
+class BasicDataBridge(object):
 
-    """Edge Bridge"""
+    """Basic Bridge"""
 
     def __init__(self, config):
-        super(EdgeDataBridge, self).__init__()
+        super(BasicDataBridge, self).__init__()
         self.config = config
         self.workers_config = {}
         self.bridge_id = uuid.uuid4().hex
@@ -504,10 +504,10 @@ class EdgeDataBridge(object):
                                    self.api_clients_info)
 
     def run(self):
-        logger.info('Start Edge Bridge',
-                    extra={'MESSAGE_ID': 'edge_bridge_start_bridge'})
+        logger.info('Start Basic Bridge',
+                    extra={'MESSAGE_ID': 'basic_bridge_start_bridge'})
         logger.info('Start data sync...',
-                    extra={'MESSAGE_ID': 'edge_bridge__data_sync'})
+                    extra={'MESSAGE_ID': 'basic_bridge__data_sync'})
         self.input_queue_filler = spawn(self.fill_input_queue)
         self.filler = spawn(self.fill_resource_items_queue)
         spawn(self.queues_controller)
@@ -517,14 +517,14 @@ class EdgeDataBridge(object):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='---- Edge Bridge ----')
+    parser = argparse.ArgumentParser(description='---- Basic Bridge ----')
     parser.add_argument('config', type=str, help='Path to configuration file')
     params = parser.parse_args()
     if os.path.isfile(params.config):
         with open(params.config) as config_file_obj:
             config = load(config_file_obj.read())
         logging.config.dictConfig(config)
-        EdgeDataBridge(config).run()
+        BasicDataBridge(config).run()
 
 
 ##############################################################

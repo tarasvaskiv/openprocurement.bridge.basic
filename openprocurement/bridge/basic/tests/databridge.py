@@ -13,8 +13,8 @@ from couchdb import Server
 from mock import MagicMock, patch
 from munch import munchify
 from openprocurement_client.exceptions import RequestFailed
-from openprocurement.edge.databridge.databridge import EdgeDataBridge
-from openprocurement.edge.databridge.utils import (
+from openprocurement.bridge.basic.databridge import BasicDataBridge
+from openprocurement.bridge.basic.utils import (
     DataBridgeConfigError,
     VALIDATE_BULK_DOCS_ID,
     VALIDATE_BULK_DOCS_UPDATE
@@ -38,7 +38,7 @@ class AlmostAlwaysTrue(object):
         return bool(0)
 
 
-class TestEdgeDataBridge(unittest.TestCase):
+class TestBasicDataBridge(unittest.TestCase):
     config = {
         'main': {
             'resources_api_server':
@@ -142,7 +142,7 @@ class TestEdgeDataBridge(unittest.TestCase):
             pass
 
     def test_init(self):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         self.assertIn('resources_api_server', bridge.config['main'])
         self.assertIn('resources_api_version', bridge.config['main'])
         self.assertIn('public_resources_api_server', bridge.config['main'])
@@ -168,7 +168,7 @@ class TestEdgeDataBridge(unittest.TestCase):
             pass
         test_config = {}
 
-        # Create EdgeDataBridge object with wrong config variable structure
+        # Create BasicDataBridge object with wrong config variable structure
         test_config = {
             'mani': {
                 'resources_api_server':
@@ -193,11 +193,11 @@ class TestEdgeDataBridge(unittest.TestCase):
             'version': 1
         }
         with self.assertRaises(DataBridgeConfigError) as e:
-            EdgeDataBridge(test_config)
+            BasicDataBridge(test_config)
         self.assertEqual(e.exception.message, 'In config dictionary missed '
                          'section \'main\'')
 
-        # Create EdgeDataBridge object without variable 'resources_api_server'
+        # Create BasicDataBridge object without variable 'resources_api_server'
         # in config
         del test_config['mani']
         test_config['main'] = {
@@ -216,24 +216,24 @@ class TestEdgeDataBridge(unittest.TestCase):
             'db_name': 'test_db'
         }
         with self.assertRaises(DataBridgeConfigError) as e:
-            EdgeDataBridge(test_config)
+            BasicDataBridge(test_config)
         self.assertEqual(e.exception.message, 'In config dictionary empty or '
                          'missing \'tenders_api_server\'')
         with self.assertRaises(KeyError) as e:
             test_config['main']['resources_api_server']
         self.assertEqual(e.exception.message, 'resources_api_server')
 
-        # Create EdgeDataBridge object with empty resources_api_server
+        # Create BasicDataBridge object with empty resources_api_server
         test_config['main']['resources_api_server'] = ''
         with self.assertRaises(DataBridgeConfigError) as e:
-            EdgeDataBridge(test_config)
+            BasicDataBridge(test_config)
         self.assertEqual(e.exception.message, 'In config dictionary empty or '
                          'missing \'tenders_api_server\'')
 
-        # Create EdgeDataBridge object with invalid resources_api_server
+        # Create BasicDataBridge object with invalid resources_api_server
         test_config['main']['resources_api_server'] = 'my_server'
         with self.assertRaises(DataBridgeConfigError) as e:
-            EdgeDataBridge(test_config)
+            BasicDataBridge(test_config)
         self.assertEqual(e.exception.message, 'Invalid \'tenders_api_server\' '
                          'url.')
 
@@ -246,16 +246,16 @@ class TestEdgeDataBridge(unittest.TestCase):
             = 'https://lb.api-sandbox.openprocurement.org'
 
         del test_config['main']['resources_api_version']
-        bridge = EdgeDataBridge(test_config)
-        self.assertEqual(type(bridge), EdgeDataBridge)
+        bridge = BasicDataBridge(test_config)
+        self.assertEqual(type(bridge), BasicDataBridge)
         with self.assertRaises(KeyError) as e:
             test_config['main']['resources_api_version']
         self.assertEqual(e.exception.message, 'resources_api_version')
         del bridge
 
         del test_config['main']['public_resources_api_server']
-        bridge = EdgeDataBridge(test_config)
-        self.assertEqual(type(bridge), EdgeDataBridge)
+        bridge = BasicDataBridge(test_config)
+        self.assertEqual(type(bridge), BasicDataBridge)
         with self.assertRaises(KeyError) as e:
             test_config['main']['public_resources_api_server']
         self.assertEqual(e.exception.message, 'public_resources_api_server')
@@ -265,22 +265,22 @@ class TestEdgeDataBridge(unittest.TestCase):
 
         test_config['main']['retrievers_params']['up_wait_sleep'] = 0
         with self.assertRaises(DataBridgeConfigError) as e:
-            EdgeDataBridge(test_config)
+            BasicDataBridge(test_config)
         self.assertEqual(
             e.exception.message,
             'Invalid \'up_wait_sleep\' in \'retrievers_params\'. Value must be'
             ' grater than 30.')
 
-    @patch('openprocurement.edge.databridge.databridge.APIClient')
+    @patch('openprocurement.bridge.basic.databridge.APIClient')
     def test_fill_api_clients_queue(self, mock_APIClient):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         self.assertEqual(bridge.api_clients_queue.qsize(), 0)
         bridge.fill_api_clients_queue()
         self.assertEqual(bridge.api_clients_queue.qsize(),
                          bridge.workers_min)
 
     def test_fill_input_queue(self):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         return_value = [
             {'id': uuid.uuid4().hex,
              'dateModified': datetime.datetime.utcnow().isoformat()}
@@ -302,7 +302,7 @@ class TestEdgeDataBridge(unittest.TestCase):
             munchify({'id': id_1, 'key': date_modified_1}),
             munchify({'id': id_2, 'key': old_date_modified})
         ]
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         bridge.db.view = MagicMock(return_value=return_value)
         self.assertEqual(bridge.resource_items_queue.qsize(), 0)
         bridge.send_bulk(input_dict)
@@ -315,7 +315,7 @@ class TestEdgeDataBridge(unittest.TestCase):
         self.assertEqual(e.exception.message, 'test')
 
     def test_fill_resource_items_queue(self):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         db_dict_list = [
             {
                 'id': uuid.uuid4().hex,
@@ -345,12 +345,12 @@ class TestEdgeDataBridge(unittest.TestCase):
             bridge.fill_resource_items_queue()
         self.assertEqual(bridge.resource_items_queue.qsize(), 1)
 
-    @patch('openprocurement.edge.databridge.databridge.spawn')
-    @patch('openprocurement.edge.databridge.databridge.ResourceItemWorker.'
+    @patch('openprocurement.bridge.basic.databridge.spawn')
+    @patch('openprocurement.bridge.basic.databridge.ResourceItemWorker.'
            'spawn')
-    @patch('openprocurement.edge.databridge.databridge.APIClient')
+    @patch('openprocurement.bridge.basic.databridge.APIClient')
     def test_gevent_watcher(self, mock_APIClient, mock_riw_spawn, mock_spawn):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         return_dict = {
             'type': 'indexer',
             'database': bridge.db_name,
@@ -374,11 +374,11 @@ class TestEdgeDataBridge(unittest.TestCase):
                          bridge.retry_workers_max - bridge.retry_workers_min)
         del bridge
 
-    @patch('openprocurement.edge.databridge.databridge.APIClient')
-    @patch('openprocurement.edge.databridge.databridge.ResourceItemWorker.'
+    @patch('openprocurement.bridge.basic.databridge.APIClient')
+    @patch('openprocurement.bridge.basic.databridge.ResourceItemWorker.'
            'spawn')
     def test_queues_controller(self, mock_riw_spawn, mock_APIClient):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         bridge.resource_items_queue_size = 10
         bridge.resource_items_queue = Queue(10)
         for i in xrange(0, 10):
@@ -398,12 +398,12 @@ class TestEdgeDataBridge(unittest.TestCase):
         self.assertEqual(len(bridge.workers_pool), 1)
         self.assertEqual(bridge.resource_items_queue.qsize(), 0)
 
-    @patch('openprocurement.edge.databridge.databridge.APIClient')
+    @patch('openprocurement.bridge.basic.databridge.APIClient')
     def test_create_api_client(self, mock_APIClient):
         mock_APIClient.side_effect = [RequestFailed(), munchify({
             'session': {'headers': {'User-Agent': 'test.agent'}}
         })]
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         self.assertEqual(bridge.api_clients_queue.qsize(), 0)
         bridge.create_api_client()
         self.assertEqual(bridge.api_clients_queue.qsize(), 1)
@@ -411,7 +411,7 @@ class TestEdgeDataBridge(unittest.TestCase):
         del bridge
 
     def test_resource_items_filter(self):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         date_modified_old = datetime.datetime.utcnow().isoformat()
         date_modified_newest = datetime.datetime.utcnow().isoformat()
         side_effect = [{'dateModified': date_modified_old},
@@ -456,7 +456,7 @@ class TestEdgeDataBridge(unittest.TestCase):
             'version': 1
         }
 
-        bridge = EdgeDataBridge(test_config)
+        bridge = BasicDataBridge(test_config)
         couch_url_config = bridge.config_get('couch_url')
         self.assertEqual(couch_url_config, test_config['main']['couch_url'])
 
@@ -471,7 +471,7 @@ class TestEdgeDataBridge(unittest.TestCase):
             bridge.config_get('couch_url')
 
     def test__get_average_request_duration(self):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         bridge.create_api_client()
         bridge.create_api_client()
         bridge.create_api_client()
@@ -507,7 +507,7 @@ class TestEdgeDataBridge(unittest.TestCase):
         self.assertEqual(grown, 1)
 
     def test__calculate_st_dev(self):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         values = [1.1, 1.11, 1.12, 1.13, 1.14]
         stdev = bridge._calculate_st_dev(values)
         self.assertEqual(stdev, 0.014)
@@ -515,7 +515,7 @@ class TestEdgeDataBridge(unittest.TestCase):
         self.assertEqual(stdev, 0)
 
     def test__mark_bad_clients(self):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         self.assertEqual(bridge.api_clients_queue.qsize(), 0)
         self.assertEqual(len(bridge.api_clients_info), 0)
 
@@ -543,7 +543,7 @@ class TestEdgeDataBridge(unittest.TestCase):
         self.assertEqual(to_destroy, 3)
 
     def test_perfomance_watcher(self):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         for i in xrange(0, 3):
             bridge.create_api_client()
         req_duration = 1
@@ -570,19 +570,19 @@ class TestEdgeDataBridge(unittest.TestCase):
         self.assertEqual(grown, 2)
         self.assertEqual(new_clients, 1)
 
-    @patch('openprocurement.edge.databridge.databridge.EdgeDataBridge.'
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
            'fill_input_queue')
-    @patch('openprocurement.edge.databridge.databridge.EdgeDataBridge.'
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
            'fill_resource_items_queue')
-    @patch('openprocurement.edge.databridge.databridge.EdgeDataBridge.'
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
            'queues_controller')
-    @patch('openprocurement.edge.databridge.databridge.EdgeDataBridge.'
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
            'perfomance_watcher')
-    @patch('openprocurement.edge.databridge.databridge.EdgeDataBridge.'
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
            'gevent_watcher')
     def test_run(self, mock_gevent, mock_perfomance, mock_controller,
                  mock_fill, mock_fill_input_queue):
-        bridge = EdgeDataBridge(self.config)
+        bridge = BasicDataBridge(self.config)
         self.assertEqual(len(bridge.filter_workers_pool), 0)
         with patch('__builtin__.True', AlmostAlwaysTrue(4)):
             bridge.run()
@@ -594,7 +594,7 @@ class TestEdgeDataBridge(unittest.TestCase):
 
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(unittest.makeSuite(TestEdgeDataBridge))
+    suite.addTest(unittest.makeSuite(TestBasicDataBridge))
     return suite
 
 
