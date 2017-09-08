@@ -1,0 +1,7 @@
+[run]
+source = openprocurement.bridge.basic
+
+[report]
+omit =
+    *tests*
+show_missing = True
