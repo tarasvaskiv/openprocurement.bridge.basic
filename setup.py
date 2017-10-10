@@ -17,7 +17,6 @@ requires = [
     'munch',
     'tzlocal',
     'pyyaml',
-    'psutil',
     'iso8601'
 ]
 test_requires = requires + [

@@ -8,9 +8,15 @@ python:
   - "2.7"
 services:
   - couchdb
+cache:
+  directories:
+    - eggs
+before_install:
+  - pip install setuptools python-coveralls
+  - python2 bootstrap.py
 install:
-  - pip install -r requirements.txt
+  - bin/buildout -N
 script:
-  - nosetests --with-coverage
+  - bin/nosetests --with-coverage
 after_success:
   - coveralls

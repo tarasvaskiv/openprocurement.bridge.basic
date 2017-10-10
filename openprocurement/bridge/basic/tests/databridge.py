@@ -59,7 +59,6 @@ class TestBasicDataBridge(unittest.TestCase):
             'workers_max': 2,
             'retry_workers_count': 2,
             'filter_workers_count': 1,
-            'retry_workers_count': 2,
             'retry_default_timeout': 0.1,
             'worker_sleep': 0.1,
             'watch_interval': 0.1,
@@ -134,9 +133,16 @@ class TestBasicDataBridge(unittest.TestCase):
         self.config['retry_resource_items_queue_size'] = -1
         self.config['bulk_query_limit'] = 1
         self.config['bulk_query_interval'] = 0.5
+        user = self.config['main']['couch_url'].get('user', '')
+        password = self.config['main']['couch_url'].get('password', '')
+        if (user and password):
+            couch_url = "http://{user}:{password}@{host}:{port}".format(
+                **self.config['main']['couch_url'])
+        else:
+            couch_url = "http://{host}:{port}".format(
+                **self.config['main']['couch_url'])
         try:
-            server = Server(self.config['main'].get('couch_url') or
-                            'http://127.0.0.1:5984')
+            server = Server(couch_url or 'http://127.0.0.1:5984')
             del server[self.config['main']['db_name']]
         except:
             pass
@@ -346,16 +352,15 @@ class TestBasicDataBridge(unittest.TestCase):
         self.assertEqual(bridge.resource_items_queue.qsize(), 1)
 
     @patch('openprocurement.bridge.basic.databridge.spawn')
-    @patch('openprocurement.bridge.basic.databridge.ResourceItemWorker.'
-           'spawn')
+    @patch('openprocurement.bridge.basic.databridge.ResourceItemWorker.spawn')
     @patch('openprocurement.bridge.basic.databridge.APIClient')
     def test_gevent_watcher(self, mock_APIClient, mock_riw_spawn, mock_spawn):
         bridge = BasicDataBridge(self.config)
         return_dict = {
             'type': 'indexer',
             'database': bridge.db_name,
-            'design_document': '_design/{}'.format(
-                bridge.workers_config['resource']),
+            'design_document':
+                '_design/{}'.format(bridge.workers_config['resource']),
             'progress': 99
         }
         bridge.server.tasks = MagicMock(return_value=[return_dict])
@@ -375,8 +380,7 @@ class TestBasicDataBridge(unittest.TestCase):
         del bridge
 
     @patch('openprocurement.bridge.basic.databridge.APIClient')
-    @patch('openprocurement.bridge.basic.databridge.ResourceItemWorker.'
-           'spawn')
+    @patch('openprocurement.bridge.basic.databridge.ResourceItemWorker.spawn')
     def test_queues_controller(self, mock_riw_spawn, mock_APIClient):
         bridge = BasicDataBridge(self.config)
         bridge.resource_items_queue_size = 10
@@ -463,7 +467,8 @@ class TestBasicDataBridge(unittest.TestCase):
         del bridge.config['main']['couch_url']
         couch_url_config = bridge.config_get('couch_url')
         self.assertEqual(couch_url_config, None)
-        server = Server(self.couch_url)
+        server = Server(test_config['main'].get('couch_url')
+                        or 'http://127.0.0.1:5984')
         del server[test_config['main']['db_name']]
 
         del bridge.config['main']
@@ -526,7 +531,8 @@ class TestBasicDataBridge(unittest.TestCase):
         avg_duration = 1
         req_intervals = [0, 2, 0, 0]
         for cid in bridge.api_clients_info:
-            self.assertEqual(bridge.api_clients_info[cid]['destroy'], False)
+            self.assertEqual(bridge.api_clients_info[cid]['drop_cookies'],
+                             False)
             bridge.api_clients_info[cid]['avg_duration'] = avg_duration
             bridge.api_clients_info[cid]['grown'] = True
             bridge.api_clients_info[cid]['request_interval'] = \
@@ -534,11 +540,11 @@ class TestBasicDataBridge(unittest.TestCase):
             avg_duration += 1
         avg = 1.5
         bridge._mark_bad_clients(avg)
-        self.assertEqual(len(bridge.api_clients_info), 6)
-        self.assertEqual(bridge.api_clients_queue.qsize(), 6)
+        self.assertEqual(len(bridge.api_clients_info), 3)
+        self.assertEqual(bridge.api_clients_queue.qsize(), 3)
         to_destroy = 0
         for cid in bridge.api_clients_info:
-            if bridge.api_clients_info[cid]['destroy']:
+            if bridge.api_clients_info[cid]['drop_cookies']:
                 to_destroy += 1
         self.assertEqual(to_destroy, 3)
 
@@ -558,17 +564,17 @@ class TestBasicDataBridge(unittest.TestCase):
 
         bridge.perfomance_watcher()
         grown = 0
-        new_clients = 0
+        with_new_cookies = 0
         for cid, info in bridge.api_clients_info.items():
             if info.get('grown', False):
                 grown += 1
-            elif not info.get('grown', False) and not info['destroy']:
-                new_clients += 1
+            if info['drop_cookies']:
+                with_new_cookies += 1
             self.assertEqual(len(info['request_durations']), 0)
         self.assertEqual(len(bridge.api_clients_info), 3)
         self.assertEqual(bridge.api_clients_queue.qsize(), 3)
-        self.assertEqual(grown, 2)
-        self.assertEqual(new_clients, 1)
+        self.assertEqual(grown, 3)
+        self.assertEqual(with_new_cookies, 1)
 
     @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
            'fill_input_queue')

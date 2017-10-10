@@ -6,7 +6,6 @@ import math
 import logging
 import logging.config
 import os
-import psutil
 import argparse
 import uuid
 from couchdb import Server, Session
@@ -16,11 +15,10 @@ from urlparse import urlparse
 from openprocurement_client.exceptions import RequestFailed
 from openprocurement_client.clients import APIResourceClient as APIClient
 from openprocurement_client.resources.sync import ResourceFeeder
-from .utils import (
+from openprocurement.bridge.basic.utils import (
     prepare_couchdb,
     prepare_couchdb_views,
-    DataBridgeConfigError,
-    clear_api_client_queue
+    DataBridgeConfigError
 )
 import gevent.pool
 from gevent import spawn, sleep
@@ -35,7 +33,6 @@ except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
-
 
 WORKER_CONFIG = {
     'resource': 'lots',
@@ -75,8 +72,8 @@ DEFAULTS = {
     'couch_url': {
         'host': "127.0.0.1",
         'port': 5984,
-        'user': "admin",
-        'password': "admin"
+        'user': "",
+        'password': ""
     },
     'db_name': 'bridge_db',
     'perfomance_window': 300
@@ -133,8 +130,6 @@ class BasicDataBridge(object):
         else:
             self.retry_resource_items_queue = Queue(
                 self.retry_resource_items_queue_size)
-
-        self.process = psutil.Process(os.getpid())
 
         if self.api_host != '' and self.api_host is not None:
             api_host = urlparse(self.api_host)
@@ -198,7 +193,7 @@ class BasicDataBridge(object):
                     'not_actual_count': 0
                 }
                 self.api_clients_info[api_client_dict['id']] = {
-                    'destroy': False,
+                    'drop_cookies': False,
                     'request_durations': {},
                     'request_interval': 0,
                     'avg_duration': 0
@@ -451,16 +446,14 @@ class BasicDataBridge(object):
         # Mark bad api clients
         for cid, info in self.api_clients_info.items():
             if info.get('grown', False) and info['avg_duration'] > dev:
-                info['destroy'] = True
-                self.create_api_client()
+                info['drop_cookies'] = True
                 logger.debug(
                     'Perfomance watcher: Mark client {} as bad, avg.'
                     ' request_duration is {} sec.'.format(
                         cid, info['avg_duration']),
                     extra={'MESSAGE_ID': 'marked_as_bad'})
             elif info['avg_duration'] < dev and info['request_interval'] > 0:
-                self.create_api_client()
-                info['destroy'] = True
+                info['drop_cookies'] = True
                 logger.debug(
                     'Perfomance watcher: Mark client {} as bad,'
                     ' request_interval is {} sec.'.format(
@@ -500,8 +493,6 @@ class BasicDataBridge(object):
                        'REQUESTS_MAX_AVG': max_avg,
                        'REQUESTS_AVG': avg_duration * 1000})
             self._mark_bad_clients(dev)
-            clear_api_client_queue(self.api_clients_queue,
-                                   self.api_clients_info)
 
     def run(self):
         logger.info('Start Basic Bridge',

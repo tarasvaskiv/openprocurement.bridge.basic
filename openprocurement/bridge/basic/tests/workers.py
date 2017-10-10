@@ -10,12 +10,13 @@ from munch import munchify
 from openprocurement_client.exceptions import (
     InvalidResponse,
     RequestFailed,
-    ResourceNotFound as RNF
+    ResourceNotFound as RNF,
+    ResourceGone
 )
-from openprocurement.bridge.basic.workers import ResourceItemWorker, logger
+from openprocurement.bridge.basic.workers import ResourceItemWorker
 import logging
 from StringIO import StringIO
-
+from openprocurement.bridge.basic.workers import logger
 
 logger.setLevel(logging.DEBUG)
 
@@ -111,10 +112,14 @@ class TestResourceItemWorker(unittest.TestCase):
         api_clients_queue.put(client_dict2)
         api_clients_info = {
             client_dict['id']: {
-                'destroy': False
+                'drop_cookies': False,
+                'not_actual_count': 5,
+                'request_interval': 3
             },
             client_dict2['id']: {
-                'destroy': True
+                'drop_cookies': True,
+                'not_actual_count': 3,
+                'request_interval': 2
             }
         }
 
@@ -128,7 +133,8 @@ class TestResourceItemWorker(unittest.TestCase):
 
         # Get lazy client
         api_client = worker._get_api_client_dict()
-        self.assertEqual(api_client, None)
+        self.assertEqual(api_client['not_actual_count'], 0)
+        self.assertEqual(api_client['request_interval'], 0)
 
         # Empty queue test
         api_client = worker._get_api_client_dict()
@@ -174,7 +180,7 @@ class TestResourceItemWorker(unittest.TestCase):
         }
         api_clients_queue.put(client_dict)
         api_clients_info =\
-            {client_dict['id']: {'destroy': False, 'request_durations': {}}}
+            {client_dict['id']: {'drop_cookies': False, 'request_durations': {}}}
         retry_queue = Queue()
         return_dict = {
             'data': {
@@ -261,6 +267,19 @@ class TestResourceItemWorker(unittest.TestCase):
         # ResourceNotFound
         mock_api_client.get_resource_item.side_effect = RNF(
             munchify({'status_code': 404}))
+        api_client = worker._get_api_client_dict()
+        self.assertEqual(worker.api_clients_queue.qsize(), 0)
+        public_item = worker._get_resource_item_from_public(api_client, item)
+        self.assertEqual(public_item, None)
+        self.assertEqual(worker.api_clients_queue.qsize(), 1)
+        self.assertEqual(api_client['request_interval'], 0)
+        sleep(worker.config['retry_default_timeout'] * 2)
+        self.assertEqual(worker.retry_resource_items_queue.qsize(), 6)
+
+        # ResourceGone
+        mock_api_client.get_resource_item.side_effect = ResourceGone(munchify(
+            {'status_code': 410}
+        ))
         api_client = worker._get_api_client_dict()
         self.assertEqual(worker.api_clients_queue.qsize(), 0)
         public_item = worker._get_resource_item_from_public(api_client, item)
@@ -399,8 +418,7 @@ class TestResourceItemWorker(unittest.TestCase):
         worker_thread.shutdown()
         sleep(3)
 
-    @patch('openprocurement.bridge.basic.workers.ResourceItemWorker.'
-           '_get_resource_item_from_public')
+    @patch('openprocurement.bridge.basic.workers.ResourceItemWorker._get_resource_item_from_public')
     def test__run(self, mock_get_from_public):
         self.queue = Queue()
         self.retry_queue = Queue()
@@ -423,7 +441,7 @@ class TestResourceItemWorker(unittest.TestCase):
         }
         client.session.headers = {'User-Agent': 'Test-Agent'}
         # api_clients_queue.put(api_client_dict)
-        self.api_clients_info = {api_client_dict['id']: {'destroy': False, 'request_durations': []}}
+        self.api_clients_info = {api_client_dict['id']: {'drop_cookies': False, 'request_durations': []}}
         self.db = MagicMock()
 
         # Try get api client from clients queue

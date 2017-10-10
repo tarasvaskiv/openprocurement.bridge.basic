@@ -6,7 +6,6 @@ from cornice.util import json_error
 from couchapp.dispatch import dispatch
 from couchdb import Server, Session
 from datetime import datetime
-from gevent.queue import Empty
 from socket import error
 from Crypto.Cipher import AES
 from functools import partial
@@ -236,22 +235,3 @@ def decrypt(uuid, name, key):
     except:
         text = ''
     return text
-
-
-def clear_api_client_queue(queue, clients_info):
-    tmp = []
-    while not queue.empty():
-        try:
-            client_dict = queue.get()
-            if clients_info[client_dict['id']]['destroy']:
-                LOGGER.info(
-                    'Drop lazy api_client {}'.format(client_dict['id']),
-                    extra={'MESSAGE_ID': 'drop_client'})
-                del clients_info[client_dict['id']]
-                del client_dict
-            else:
-                tmp.append(client_dict)
-        except Empty:
-            break
-    for c in tmp:
-        queue.put(c)
