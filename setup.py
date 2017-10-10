@@ -37,7 +37,7 @@ entry_points = {
 setup(name='openprocurement.bridge.basic',
       version=version,
       description="openprocurement.bridge.basic",
-      long_description=open("README.txt").read() + "\n",
+      long_description=open("README.md").read() + "\n",
       classifiers=[
           "Framework :: Pylons",
           "License :: OSI Approved :: Apache Software License",
