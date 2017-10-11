@@ -8,19 +8,15 @@ import logging.config
 import os
 import argparse
 import uuid
-from couchdb import Server, Session
+import gevent.pool
 from httplib import IncompleteRead
 from yaml import load
 from urlparse import urlparse
 from openprocurement_client.exceptions import RequestFailed
 from openprocurement_client.clients import APIResourceClient as APIClient
 from openprocurement_client.resources.sync import ResourceFeeder
-from openprocurement.bridge.basic.utils import (
-    prepare_couchdb,
-    prepare_couchdb_views,
-    DataBridgeConfigError
-)
-import gevent.pool
+from openprocurement.bridge.basic.utils import DataBridgeConfigError
+from pkg_resources import iter_entry_points
 from gevent import spawn, sleep
 from gevent.queue import Queue, Empty
 from datetime import datetime, timedelta
@@ -61,7 +57,6 @@ DEFAULTS = {
     'filter_workers_count': 1,
     'watch_interval': 10,
     'user_agent': 'basicbridge.multi',
-    'log_db_name': 'logs_db',
     'resource_items_queue_size': 10000,
     'input_queue_size': 10000,
     'resource_items_limit': 1000,
@@ -69,13 +64,14 @@ DEFAULTS = {
     'filter_workers_pool': 1,
     'bulk_query_interval': 5,
     'bulk_query_limit': 1000,
-    'couch_url': {
+    'storage_db': 'couchdb',  # another value: 'elasticsearch'
+    'storage': {
         'host': "127.0.0.1",
         'port': 5984,
         'user': "",
-        'password': ""
+        'password': "",
+        'db_name': 'bridge_db'
     },
-    'db_name': 'bridge_db',
     'perfomance_window': 300
 }
 
@@ -139,21 +135,14 @@ class BasicDataBridge(object):
         else:
             raise DataBridgeConfigError('In config dictionary empty or missing'
                                         ' \'tenders_api_server\'')
-        user = self.config['main']['couch_url'].get('user', '')
-        password = self.config['main']['couch_url'].get('password', '')
-        if (user and password):
-            self.couch_url = "http://{user}:{password}@{host}:{port}".format(
-                **self.config['main']['couch_url'])
-        else:
-            self.couch_url = "http://{host}:{port}".format(
-                **self.config['main']['couch_url'])
-        db_url = self.couch_url + '/' + self.db_name
-        prepare_couchdb_views(db_url, self.workers_config['resource'], logger)
-        self.db = prepare_couchdb(self.couch_url, self.db_name, logger)
-        self.server = Server(self.couch_url,
-                             session=Session(retry_delays=range(10)))
-        self.view_path = '_design/{}/_view/by_dateModified'.format(
-            self.workers_config['resource'])
+
+        # Connecting storage plugin
+        storage = self.config_get('storage_db') or DEFAULTS['storage_db']
+        for entry_point in iter_entry_points(
+                'openprocurement.bridge.basic.plugins', storage):
+            plugin = entry_point.load()
+            plugin(self.config)
+        self.db = self.config.get('storage_obj')
         extra_params = {
             'mode': self.retrieve_mode,
             'limit': self.resource_items_limit
@@ -230,25 +219,13 @@ class BasicDataBridge(object):
                 extra={'MESSAGE_ID': 'received_from_sync'})
 
     def send_bulk(self, input_dict):
-        sleep_before_retry = 2
-        for i in xrange(0, 3):
-            try:
-                rows = self.db.view(self.view_path, keys=input_dict.values())
-                resp_dict = {k.id: k.key for k in rows}
-                break
-            except (IncompleteRead, Exception) as e:
-                logger.error('Error while send bulk {}'.format(e.message),
-                             extra={'MESSAGE_ID': 'exceptions'})
-                if i == 2:
-                    raise e
-                sleep(sleep_before_retry)
-                sleep_before_retry *= 2
+        resp_dict = self.db.filter_bulk(input_dict)
         for item_id, date_modified in input_dict.items():
             if item_id in resp_dict and date_modified == resp_dict[item_id]:
                 logger.debug('Ignored {} {}: SYNC - {}, EDGE - {}'.format(
                     self.workers_config['resource'][:-1], item_id,
                     date_modified, resp_dict[item_id]),
-                    extra={'MESSAGE_ID': 'skiped'})
+                    extra={'MESSAGE_ID': 'skipped'})
             else:
                 self.resource_items_queue.put(
                     {'id': item_id, 'dateModified': date_modified})
@@ -285,23 +262,6 @@ class BasicDataBridge(object):
                     self.send_bulk(input_dict)
                     input_dict = {}
                 start_time = datetime.now()
-
-    def resource_items_filter(self, r_id, r_date_modified):
-        try:
-            local_document = self.db.get(r_id)
-            if local_document:
-                if local_document['dateModified'] < r_date_modified:
-                    return True
-                else:
-                    return False
-            else:
-                return True
-        except Exception as e:
-            logger.error(
-                'Filter error: Error while getting {} {} from couchdb: '
-                '{}'.format(self.workers_config['resource'][:-1], r_id,
-                            e.message), extra={'MESSAGE_ID': 'exceptions'})
-            return True
 
     def _get_average_requests_duration(self):
         req_durations = []
@@ -363,13 +323,6 @@ class BasicDataBridge(object):
 
     def gevent_watcher(self):
         self.perfomance_watcher()
-        for t in self.server.tasks():
-            if (t['type'] == 'indexer' and t['database'] == self.db_name and
-                    t.get('design_document', None) == '_design/{}'.format(
-                        self.workers_config['resource'])):
-                logger.info(
-                    'Watcher: Waiting for end of view indexing. Current'
-                    ' progress: {} %'.format(t['progress']))
 
         # Check fill threads
         input_threads = 1

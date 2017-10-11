@@ -233,11 +233,14 @@ class ResourceItemWorker(Greenlet):
             return None
 
     def _add_to_bulk(self, resource_item, queue_resource_item,
-                     resource_item_doc):
+                     local_item_doc):
         resource_item['doc_type'] = self.config['resource'][:-1].title()
         resource_item['_id'] = resource_item['id']
-        if resource_item_doc:
-            resource_item['_rev'] = resource_item_doc['_rev']
+
+        # For compatibility with couchdb
+        if local_item_doc and '_rev' in local_item_doc:
+            resource_item['_rev'] = local_item_doc['_rev']
+
         bulk_doc = self.bulk.get(resource_item['id'])
 
         if bulk_doc and bulk_doc['dateModified'] <\
@@ -246,7 +249,7 @@ class ResourceItemWorker(Greenlet):
                 'Replaced {} in bulk {} previous {}, current {}'.format(
                     self.config['resource'][:-1], bulk_doc['id'],
                     bulk_doc['dateModified'], resource_item['dateModified']),
-                extra={'MESSAGE_ID': 'skiped'})
+                extra={'MESSAGE_ID': 'skipped'})
             self.bulk[resource_item['id']] = resource_item
         elif bulk_doc and bulk_doc['dateModified'] >=\
                 resource_item['dateModified']:
@@ -255,7 +258,7 @@ class ResourceItemWorker(Greenlet):
                 '{}'.format(
                     self.config['resource'][:-1], resource_item['id'],
                     bulk_doc['dateModified'], resource_item['dateModified']),
-                extra={'MESSAGE_ID': 'skiped'})
+                extra={'MESSAGE_ID': 'skipped'})
         if not bulk_doc:
             self.bulk[resource_item['id']] = resource_item
             logger.debug('Put in bulk {} {} {}'.format(
@@ -263,55 +266,52 @@ class ResourceItemWorker(Greenlet):
                 resource_item['dateModified']))
         return
 
+    def log_timeshift(self, resource_item):
+        ts = (datetime.now(TZ) -
+              parse_date(resource_item['dateModified'])).total_seconds()
+        logger.debug('{} {} timeshift is {} sec.'.format(
+            self.config['resource'][:-1], resource_item['id'], ts),
+            extra={'DOCUMENT_TIMESHIFT': ts})
+
     def _save_bulk_docs(self):
         if (len(self.bulk) > self.bulk_save_limit or
                 (datetime.now() - self.start_time).total_seconds() >
                 self.bulk_save_interval or self.exit):
             try:
-                res = self.db.update(self.bulk.values())
-                for resource_item in self.bulk.values():
-                    ts = (datetime.now(TZ) -
-                          parse_date(resource_item[
-                              'dateModified'])).total_seconds()
-                    logger.debug('{} {} timeshift is {} sec.'.format(
-                        self.config['resource'][:-1], resource_item['id'], ts),
-                        extra={'DOCUMENT_TIMESHIFT': ts})
+                res = self.db.save_bulk(self.bulk)
                 logger.info('Save bulk {} docs to db.'.format(len(self.bulk)))
             except Exception as e:
                 logger.error('Error while saving bulk_docs in db: {}'.format(
-                    e.message), extra={'MESSAGE_ID': 'exceptions'})
+                    repr(e)), extra={'MESSAGE_ID': 'exceptions'})
                 for doc in self.bulk.values():
                     self.add_to_retry_queue(
                         {'id': doc['id'], 'dateModified': doc['dateModified']})
                 self.bulk = {}
                 self.start_time = datetime.now()
                 return
+            for success, doc_id, reason in res:
+                if success and reason == 'updated':
+                    logger.info('Update {} {}'.format(
+                        self.config['resource'][:-1], doc_id),
+                        extra={'MESSAGE_ID': 'update_documents'})
+                if success and reason == 'created':
+                    logger.info('Save {} {}'.format(
+                        self.config['resource'][:-1], doc_id),
+                        extra={'MESSAGE_ID': 'save_documents'})
+                if success and reason == 'skipped':
+                    logger.info('Skipped {} {}'.format(
+                        self.config['resource'][:-1], doc_id),
+                        extra={'MESSAGE_ID': 'skipped'})
+                if not success:
+                    logger.warning(
+                        'Put to retry queue {} {} with reason: '
+                        '{}'.format(self.config['resource'][:-1],
+                                    doc_id, repr(reason)))
+                    self.add_to_retry_queue(
+                        {'id': doc_id,
+                         'dateModified': self.bulk[doc_id]['dateModified']}
+                    )
             self.bulk = {}
-            for success, doc_id, rev_or_exc in res:
-                if success:
-                    if not rev_or_exc.startswith('1-'):
-                        logger.info('Update {} {}'.format(
-                            self.config['resource'][:-1], doc_id),
-                            extra={'MESSAGE_ID': 'update_documents'})
-                    else:
-                        logger.info('Save {} {}'.format(
-                            self.config['resource'][:-1], doc_id),
-                            extra={'MESSAGE_ID': 'save_documents'})
-                    continue
-                else:
-                    if rev_or_exc.message !=\
-                            u'New doc with oldest dateModified.':
-                        self.add_to_retry_queue({'id': doc_id,
-                                                 'dateModified': None})
-                        logger.error(
-                            'Put to retry queue {} {} with reason: '
-                            '{}'.format(self.config['resource'][:-1],
-                                        doc_id, rev_or_exc.message))
-                    else:
-                        logger.debug('Ignored {} {} with reason: {}'.format(
-                            self.config['resource'][:-1], doc_id, rev_or_exc),
-                            extra={'MESSAGE_ID': 'skiped'})
-                        continue
             self.start_time = datetime.now()
 
     def _run(self):
@@ -334,7 +334,7 @@ class ResourceItemWorker(Greenlet):
             # Try get resource item from local storage
             try:
                 # Resource object from local db server
-                resource_item_doc = self.db.get(queue_resource_item['id'])
+                local_item_doc = self.db.get_doc(queue_resource_item['id'])
                 if queue_resource_item['dateModified'] is None:
                     public_doc = self._get_resource_item_from_public(
                         api_client_dict, queue_resource_item)
@@ -347,15 +347,15 @@ class ResourceItemWorker(Greenlet):
                     if api_client_dict is None:
                         self.add_to_retry_queue(queue_resource_item)
                         continue
-                if (resource_item_doc and
-                        resource_item_doc['dateModified'] >=
+                if (local_item_doc and
+                        local_item_doc['dateModified'] >=
                         queue_resource_item['dateModified']):
                     logger.debug('Ignored {} {} QUEUE - {}, EDGE - {}'.format(
                         self.config['resource'][:-1],
                         queue_resource_item['id'],
                         queue_resource_item['dateModified'],
-                        resource_item_doc['dateModified']),
-                        extra={'MESSAGE_ID': 'skiped'})
+                        local_item_doc['dateModified']),
+                        extra={'MESSAGE_ID': 'skipped'})
                     self.api_clients_queue.put(api_client_dict)
                     continue
             except Exception as e:
@@ -377,7 +377,7 @@ class ResourceItemWorker(Greenlet):
 
             # Add docs to bulk
             self._add_to_bulk(resource_item, queue_resource_item,
-                              resource_item_doc)
+                              local_item_doc)
 
             # Save/Update docs in db
             self._save_bulk_docs()

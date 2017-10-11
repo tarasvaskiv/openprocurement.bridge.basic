@@ -10,14 +10,14 @@ requires = [
     'gevent',
     'pyramid_exclog',
     'setuptools',
-    'couchdb',
-    'couchapp',
     'pycrypto',
     'openprocurement_client',
     'munch',
     'tzlocal',
     'pyyaml',
-    'iso8601'
+    'iso8601',
+    'couchdb',
+    'elasticsearch',
 ]
 test_requires = requires + [
     'requests',
@@ -30,6 +30,10 @@ test_requires = requires + [
 entry_points = {
     'console_scripts': [
         'databridge = openprocurement.bridge.basic.databridge:main'
+    ],
+    'openprocurement.bridge.basic.plugins': [
+        'couchdb = openprocurement.bridge.basic.storages.couchdb_plugin:includme',
+        'elasticsearch = openprocurement.bridge.basic.storages.elasticsearch_plugin:includme'
     ]
 }
 

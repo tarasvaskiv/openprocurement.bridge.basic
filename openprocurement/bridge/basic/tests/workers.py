@@ -2,6 +2,7 @@
 import datetime
 import unittest
 import uuid
+import logging
 from copy import deepcopy
 from gevent import sleep, idle
 from gevent.queue import Queue, Empty
@@ -13,10 +14,8 @@ from openprocurement_client.exceptions import (
     ResourceNotFound as RNF,
     ResourceGone
 )
-from openprocurement.bridge.basic.workers import ResourceItemWorker
-import logging
+from openprocurement.bridge.basic.workers import ResourceItemWorker, logger
 from StringIO import StringIO
-from openprocurement.bridge.basic.workers import logger
 
 logger.setLevel(logging.DEBUG)
 
