@@ -10,6 +10,7 @@ from gevent.queue import Empty
 from iso8601 import parse_date
 from pytz import timezone
 from requests.exceptions import ConnectionError
+import logging
 import logging.config
 import time
 from openprocurement_client.exceptions import (
@@ -365,7 +366,7 @@ class ResourceItemWorker(Greenlet):
                     'dateModified': queue_resource_item['dateModified']
                 })
                 logger.error('Error while getting resource item from couchdb: '
-                             '{}'.format(e.message),
+                             '{}'.format(repr(e)),
                              extra={'MESSAGE_ID': 'exceptions'})
                 continue
 

@@ -77,7 +77,7 @@ class ElasticsearchStorage(object):
             result = item['index']['result'] if 'result' in item[
                 'index'] else \
                 item['index']['error']['reason']
-            if not success and result != 'Mapping reason message':
+            if not success and result != u'Mapping reason message':
                 # TODO: Catch real mapping message and replace ^
                 result = 'skipped'
                 success = True
@@ -99,5 +99,5 @@ class ElasticsearchStorage(object):
 
 
 def includme(config):
-    resource = config.get('main', {}).get('resource', 'tenders')[:-1]
-    config['storage_obj'] = ElasticsearchStorage(config['main'], resource)
+    resource = config.get('resource', 'tenders')[:-1]
+    config['storage_obj'] = ElasticsearchStorage(config, resource)

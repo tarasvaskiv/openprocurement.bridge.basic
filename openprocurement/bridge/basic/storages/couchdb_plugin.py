@@ -2,9 +2,8 @@
 import logging
 from couchdb import Server, Session
 from couchdb.design import ViewDefinition
-from gevent import sleep
+from time import sleep
 from httplib import IncompleteRead
-from socket import error
 
 
 LOGGER = logging.getLogger(__name__)
@@ -42,9 +41,9 @@ class CouchDBStorage(object):
                 self.db = server.create(self.db_name)
             else:
                 self.db = server[self.db_name]
-        except error as e:
-            LOGGER.error('Database error: {}'.format(e.message))
-            raise Exception(e.strerror)
+        except Exception as e:
+            LOGGER.error('Database error: {}'.format(repr(e)))
+            raise
 
         by_date_modified_view = ViewDefinition(
             self.resource, 'by_dateModified', '''function(doc) {
@@ -80,7 +79,6 @@ class CouchDBStorage(object):
         doc = self.db.get(doc_id)
         return doc
 
-
     def filter_bulk(self, bulk):
         """
         Receiving list of docs ids and checking existing in storage, return
@@ -98,7 +96,7 @@ class CouchDBStorage(object):
                 LOGGER.error('Error while send bulk {}'.format(e.message),
                              extra={'MESSAGE_ID': 'exceptions'})
                 if i == 2:
-                    raise e
+                    raise
                 sleep(sleep_before_retry)
                 sleep_before_retry *= 2
 
@@ -126,5 +124,5 @@ class CouchDBStorage(object):
 
 
 def includme(config):
-    resource = config.get('main', {}).get('resource')
-    config['storage_obj'] = CouchDBStorage(config['main'], resource)
+    resource = config.get('resource', 'tenders')
+    config['storage_obj'] = CouchDBStorage(config, resource)

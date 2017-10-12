@@ -9,7 +9,6 @@ import os
 import argparse
 import uuid
 import gevent.pool
-from httplib import IncompleteRead
 from yaml import load
 from urlparse import urlparse
 from openprocurement_client.exceptions import RequestFailed
@@ -25,13 +24,36 @@ from .workers import ResourceItemWorker
 try:
     import urllib3.contrib.pyopenssl
     urllib3.contrib.pyopenssl.inject_into_urllib3()
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 
 logger = logging.getLogger(__name__)
 
-WORKER_CONFIG = {
-    'resource': 'lots',
+WORKER_CONFIG_KEYS = [
+    'resource',
+    'client_inc_step_timeout',
+    'client_dec_step_timeout',
+    'drop_threshold_client_cookies',
+    'worker_sleep',
+    'retry_default_timeout',
+    'retries_count',
+    'queue_timeout',
+    'bulk_save_limit',
+    'bulk_save_interval'
+]
+
+DEFAULTS = {
+    'resources_api_server': '',
+    'resources_api_version': "0",
+    'public_resources_api_server': '',
+    'retrieve_mode': '_all_',
+    'workers_inc_threshold': 75,
+    'workers_dec_threshold': 35,
+    'workers_min': 1,
+    'workers_max': 3,
+    'retry_workers_min': 1,
+    'retry_workers_max': 2,
+    'retry_resource_items_queue_size': -1,
     'client_inc_step_timeout': 0.1,
     'client_dec_step_timeout': 0.02,
     'drop_threshold_client_cookies': 2,
@@ -40,20 +62,7 @@ WORKER_CONFIG = {
     'retries_count': 10,
     'queue_timeout': 3,
     'bulk_save_limit': 1000,
-    'bulk_save_interval': 5
-}
-
-DEFAULTS = {
-    'retrieve_mode': '_all_',
-    'workers_inc_threshold': 75,
-    'workers_dec_threshold': 35,
-    'workers_min': 1,
-    'workers_max': 3,
-    'workers_pool': 3,
-    'retry_workers_min': 1,
-    'retry_workers_max': 2,
-    'retry_workers_pool': 2,
-    'retry_resource_items_queue_size': -1,
+    'bulk_save_interval': 5,
     'filter_workers_count': 1,
     'watch_interval': 10,
     'user_agent': 'basicbridge.multi',
@@ -61,18 +70,24 @@ DEFAULTS = {
     'input_queue_size': 10000,
     'resource_items_limit': 1000,
     'queues_controller_timeout': 60,
-    'filter_workers_pool': 1,
     'bulk_query_interval': 5,
     'bulk_query_limit': 1000,
     'storage_db': 'couchdb',  # another value: 'elasticsearch'
-    'storage': {
+    'storage': {  # another value: dict for configuration elasticsearch
         'host': "127.0.0.1",
         'port': 5984,
         'user': "",
         'password': "",
         'db_name': 'bridge_db'
     },
-    'perfomance_window': 300
+    'retrievers_params': {
+        'down_requests_sleep': 5,
+        'up_requests_sleep': 1,
+        'up_wait_sleep': 30,
+        'queue_size': 101
+    },
+    'perfomance_window': 300,
+    'resource': 'lots'
 }
 
 
@@ -82,12 +97,14 @@ class BasicDataBridge(object):
 
     def __init__(self, config):
         super(BasicDataBridge, self).__init__()
-        self.config = config
+        DEFAULTS.update(config['main'])
+        self.config = DEFAULTS
         self.workers_config = {}
         self.bridge_id = uuid.uuid4().hex
-        self.api_host = self.config_get('resources_api_server')
-        self.api_version = self.config_get('resources_api_version')
-        self.retrievers_params = self.config_get('retrievers_params')
+
+        # Init config
+        for key in DEFAULTS:
+            setattr(self, key, DEFAULTS[key])
 
         # Check up_wait_sleep
         up_wait_sleep = self.retrievers_params.get('up_wait_sleep')
@@ -95,15 +112,9 @@ class BasicDataBridge(object):
             raise DataBridgeConfigError('Invalid \'up_wait_sleep\' in '
                                         '\'retrievers_params\'. Value must be '
                                         'grater than 30.')
-
         # Workers settings
-        for key in WORKER_CONFIG:
-            self.workers_config[key] = (self.config_get(key) or
-                                        WORKER_CONFIG[key])
-
-        # Init config
-        for key in DEFAULTS:
-            setattr(self, key, self.config_get(key) or DEFAULTS[key])
+        for key in WORKER_CONFIG_KEYS:
+            self.workers_config[key] = DEFAULTS[key]
 
         # Pools
         self.workers_pool = gevent.pool.Pool(self.workers_max)
@@ -120,26 +131,25 @@ class BasicDataBridge(object):
         else:
             self.resource_items_queue = Queue(self.resource_items_queue_size)
         self.api_clients_queue = Queue()
-        # self.retry_api_clients_queue = Queue()
         if self.retry_resource_items_queue_size == -1:
             self.retry_resource_items_queue = Queue()
         else:
             self.retry_resource_items_queue = Queue(
                 self.retry_resource_items_queue_size)
 
-        if self.api_host != '' and self.api_host is not None:
-            api_host = urlparse(self.api_host)
+        if (self.resources_api_server != '' and
+                    self.resources_api_server is not None):
+            api_host = urlparse(self.resources_api_server)
             if api_host.scheme == '' and api_host.netloc == '':
                 raise DataBridgeConfigError(
-                    'Invalid \'tenders_api_server\' url.')
+                    'Invalid \'resource_api_server\' url.')
         else:
             raise DataBridgeConfigError('In config dictionary empty or missing'
-                                        ' \'tenders_api_server\'')
+                                        ' \'resource_api_server\'')
 
         # Connecting storage plugin
-        storage = self.config_get('storage_db') or DEFAULTS['storage_db']
         for entry_point in iter_entry_points(
-                'openprocurement.bridge.basic.plugins', storage):
+                'openprocurement.bridge.basic.plugins', self.storage_db):
             plugin = entry_point.load()
             plugin(self.config)
         self.db = self.config.get('storage_obj')
@@ -147,20 +157,13 @@ class BasicDataBridge(object):
             'mode': self.retrieve_mode,
             'limit': self.resource_items_limit
         }
-        self.feeder = ResourceFeeder(host=self.api_host,
-                                     version=self.api_version, key='',
-                                     resource=self.workers_config['resource'],
+        self.feeder = ResourceFeeder(host=self.resources_api_server,
+                                     version=self.resources_api_version, key='',
+                                     resource=self.resource,
                                      extra_params=extra_params,
                                      retrievers_params=self.retrievers_params,
                                      adaptive=True)
         self.api_clients_info = {}
-
-    def config_get(self, name):
-        try:
-            return self.config.get('main').get(name)
-        except AttributeError:
-            raise DataBridgeConfigError('In config dictionary missed section'
-                                        ' \'main\'')
 
     def create_api_client(self):
         client_user_agent = self.user_agent + '/' + self.bridge_id
@@ -168,9 +171,10 @@ class BasicDataBridge(object):
         while 1:
             try:
                 api_client = APIClient(
-                    host_url=self.api_host, user_agent=client_user_agent,
-                    api_version=self.api_version, key='',
-                    resource=self.workers_config['resource'])
+                    host_url=self.resources_api_server,
+                    user_agent=client_user_agent,
+                    api_version=self.resources_api_version, key='',
+                    resource=self.resource)
                 client_id = uuid.uuid4().hex
                 logger.info('Started api_client {}'.format(
                     api_client.session.headers['User-Agent']),
