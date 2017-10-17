@@ -63,10 +63,17 @@ class ElasticsearchStorage(object):
         for k, v in bulk.items():
             doc = v.copy()
             del doc['_id']
-            body.append({
-                "index": {"_id": k, "_type": self.doc_type.title(),
-                          "_index": self.alias}
-            })
+            if '_ver' in doc:
+                body.append({
+                    "index": {"_id": k, "_type": self.doc_type.title(),
+                              "_index": self.alias, '_version': doc['_ver']}
+                })
+                del doc['_ver']
+            else:
+                body.append({
+                    "index": {"_id": k, "_type": self.doc_type.title(),
+                              "_index": self.alias}
+                })
             body.append(doc)
         res = self.db.index_bulk(body=body,
                                  doc_type=self.doc_type.title())
@@ -94,7 +101,13 @@ class ElasticsearchStorage(object):
         doc = self.db.index_get(
             doc_type=self.doc_type.title(), id=doc_id, ignore=[404]
         )
-        doc = doc['_source'] if doc and '_source' in doc else None
+        if doc and '_source' in doc:
+            source = doc['_source']
+            ver = doc['_version']
+            doc = source
+            doc['_ver'] = ver
+        else:
+            doc = None
         return doc
 
 

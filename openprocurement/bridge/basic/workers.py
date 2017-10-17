@@ -238,9 +238,11 @@ class ResourceItemWorker(Greenlet):
         resource_item['doc_type'] = self.config['resource'][:-1].title()
         resource_item['_id'] = resource_item['id']
 
-        # For compatibility with couchdb
-        if local_item_doc and '_rev' in local_item_doc:
-            resource_item['_rev'] = local_item_doc['_rev']
+        # Setup service keys
+        if local_item_doc:
+            for k in local_item_doc:
+                if k.startswith('_'):
+                    resource_item[k] = local_item_doc[k]
 
         bulk_doc = self.bulk.get(resource_item['id'])
 

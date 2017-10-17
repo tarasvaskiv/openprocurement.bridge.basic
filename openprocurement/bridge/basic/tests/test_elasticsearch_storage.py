@@ -113,6 +113,7 @@ class TestElasticsearchStorage(unittest.TestCase):
             self.id_1: {
                 'id': self.id_1,
                 '_id': self.id_1,
+                '_ver': 1,
                 'doc_type': 'Tender'
             },
             self.id_2: {
@@ -156,9 +157,10 @@ class TestElasticsearchStorage(unittest.TestCase):
         db.db.get.return_value = {}
         doc = db.get_doc(self.id_1)
         self.assertIs(doc, None)
-        db.db.get.return_value = {'_source': {'id': self.id_2}}
+        db.db.get.return_value = {'_source': {'id': self.id_2},
+                                  '_version': 1}
         doc = db.get_doc(self.id_2)
-        self.assertEqual(doc, {'id': self.id_2})
+        self.assertEqual(doc, {'id': self.id_2, '_ver': 1})
 
     @patch('openprocurement.bridge.basic.storages.elasticsearch_plugin.'
            'Elasticsearch')
