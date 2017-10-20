@@ -6,23 +6,16 @@ import math
 import logging
 import logging.config
 import os
-import psutil
 import argparse
 import uuid
-from couchdb import Server, Session
-from httplib import IncompleteRead
+import gevent.pool
 from yaml import load
 from urlparse import urlparse
 from openprocurement_client.exceptions import RequestFailed
 from openprocurement_client.clients import APIResourceClient as APIClient
 from openprocurement_client.resources.sync import ResourceFeeder
-from .utils import (
-    prepare_couchdb,
-    prepare_couchdb_views,
-    DataBridgeConfigError,
-    clear_api_client_queue
-)
-import gevent.pool
+from openprocurement.bridge.basic.utils import DataBridgeConfigError
+from pkg_resources import iter_entry_points
 from gevent import spawn, sleep
 from gevent.queue import Queue, Empty
 from datetime import datetime, timedelta
@@ -31,14 +24,36 @@ from .workers import ResourceItemWorker
 try:
     import urllib3.contrib.pyopenssl
     urllib3.contrib.pyopenssl.inject_into_urllib3()
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 
 logger = logging.getLogger(__name__)
 
+WORKER_CONFIG_KEYS = [
+    'resource',
+    'client_inc_step_timeout',
+    'client_dec_step_timeout',
+    'drop_threshold_client_cookies',
+    'worker_sleep',
+    'retry_default_timeout',
+    'retries_count',
+    'queue_timeout',
+    'bulk_save_limit',
+    'bulk_save_interval'
+]
 
-WORKER_CONFIG = {
-    'resource': 'lots',
+DEFAULTS = {
+    'resources_api_server': '',
+    'resources_api_version': "0",
+    'public_resources_api_server': '',
+    'retrieve_mode': '_all_',
+    'workers_inc_threshold': 75,
+    'workers_dec_threshold': 35,
+    'workers_min': 1,
+    'workers_max': 3,
+    'retry_workers_min': 1,
+    'retry_workers_max': 2,
+    'retry_resource_items_queue_size': -1,
     'client_inc_step_timeout': 0.1,
     'client_dec_step_timeout': 0.02,
     'drop_threshold_client_cookies': 2,
@@ -47,39 +62,32 @@ WORKER_CONFIG = {
     'retries_count': 10,
     'queue_timeout': 3,
     'bulk_save_limit': 1000,
-    'bulk_save_interval': 5
-}
-
-DEFAULTS = {
-    'retrieve_mode': '_all_',
-    'workers_inc_threshold': 75,
-    'workers_dec_threshold': 35,
-    'workers_min': 1,
-    'workers_max': 3,
-    'workers_pool': 3,
-    'retry_workers_min': 1,
-    'retry_workers_max': 2,
-    'retry_workers_pool': 2,
-    'retry_resource_items_queue_size': -1,
+    'bulk_save_interval': 5,
     'filter_workers_count': 1,
     'watch_interval': 10,
     'user_agent': 'basicbridge.multi',
-    'log_db_name': 'logs_db',
     'resource_items_queue_size': 10000,
     'input_queue_size': 10000,
     'resource_items_limit': 1000,
     'queues_controller_timeout': 60,
-    'filter_workers_pool': 1,
     'bulk_query_interval': 5,
     'bulk_query_limit': 1000,
-    'couch_url': {
+    'storage_db': 'couchdb',  # another value: 'elasticsearch'
+    'storage': {  # another value: dict for configuration elasticsearch
         'host': "127.0.0.1",
         'port': 5984,
-        'user': "admin",
-        'password': "admin"
+        'user': "",
+        'password': "",
+        'db_name': 'bridge_db'
     },
-    'db_name': 'bridge_db',
-    'perfomance_window': 300
+    'retrievers_params': {
+        'down_requests_sleep': 5,
+        'up_requests_sleep': 1,
+        'up_wait_sleep': 30,
+        'queue_size': 101
+    },
+    'perfomance_window': 300,
+    'resource': 'lots'
 }
 
 
@@ -89,12 +97,14 @@ class BasicDataBridge(object):
 
     def __init__(self, config):
         super(BasicDataBridge, self).__init__()
-        self.config = config
+        DEFAULTS.update(config['main'])
+        self.config = DEFAULTS
         self.workers_config = {}
         self.bridge_id = uuid.uuid4().hex
-        self.api_host = self.config_get('resources_api_server')
-        self.api_version = self.config_get('resources_api_version')
-        self.retrievers_params = self.config_get('retrievers_params')
+
+        # Init config
+        for key in DEFAULTS:
+            setattr(self, key, DEFAULTS[key])
 
         # Check up_wait_sleep
         up_wait_sleep = self.retrievers_params.get('up_wait_sleep')
@@ -102,15 +112,9 @@ class BasicDataBridge(object):
             raise DataBridgeConfigError('Invalid \'up_wait_sleep\' in '
                                         '\'retrievers_params\'. Value must be '
                                         'grater than 30.')
-
         # Workers settings
-        for key in WORKER_CONFIG:
-            self.workers_config[key] = (self.config_get(key) or
-                                        WORKER_CONFIG[key])
-
-        # Init config
-        for key in DEFAULTS:
-            setattr(self, key, self.config_get(key) or DEFAULTS[key])
+        for key in WORKER_CONFIG_KEYS:
+            self.workers_config[key] = DEFAULTS[key]
 
         # Pools
         self.workers_pool = gevent.pool.Pool(self.workers_max)
@@ -127,56 +131,39 @@ class BasicDataBridge(object):
         else:
             self.resource_items_queue = Queue(self.resource_items_queue_size)
         self.api_clients_queue = Queue()
-        # self.retry_api_clients_queue = Queue()
         if self.retry_resource_items_queue_size == -1:
             self.retry_resource_items_queue = Queue()
         else:
             self.retry_resource_items_queue = Queue(
                 self.retry_resource_items_queue_size)
 
-        self.process = psutil.Process(os.getpid())
-
-        if self.api_host != '' and self.api_host is not None:
-            api_host = urlparse(self.api_host)
+        if (self.resources_api_server != '' and
+                    self.resources_api_server is not None):
+            api_host = urlparse(self.resources_api_server)
             if api_host.scheme == '' and api_host.netloc == '':
                 raise DataBridgeConfigError(
-                    'Invalid \'tenders_api_server\' url.')
+                    'Invalid \'resource_api_server\' url.')
         else:
             raise DataBridgeConfigError('In config dictionary empty or missing'
-                                        ' \'tenders_api_server\'')
-        user = self.config['main']['couch_url'].get('user', '')
-        password = self.config['main']['couch_url'].get('password', '')
-        if (user and password):
-            self.couch_url = "http://{user}:{password}@{host}:{port}".format(
-                **self.config['main']['couch_url'])
-        else:
-            self.couch_url = "http://{host}:{port}".format(
-                **self.config['main']['couch_url'])
-        db_url = self.couch_url + '/' + self.db_name
-        prepare_couchdb_views(db_url, self.workers_config['resource'], logger)
-        self.db = prepare_couchdb(self.couch_url, self.db_name, logger)
-        self.server = Server(self.couch_url,
-                             session=Session(retry_delays=range(10)))
-        self.view_path = '_design/{}/_view/by_dateModified'.format(
-            self.workers_config['resource'])
+                                        ' \'resource_api_server\'')
+
+        # Connecting storage plugin
+        for entry_point in iter_entry_points(
+                'openprocurement.bridge.basic.plugins', self.storage_db):
+            plugin = entry_point.load()
+            plugin(self.config)
+        self.db = self.config.get('storage_obj')
         extra_params = {
             'mode': self.retrieve_mode,
             'limit': self.resource_items_limit
         }
-        self.feeder = ResourceFeeder(host=self.api_host,
-                                     version=self.api_version, key='',
-                                     resource=self.workers_config['resource'],
+        self.feeder = ResourceFeeder(host=self.resources_api_server,
+                                     version=self.resources_api_version, key='',
+                                     resource=self.resource,
                                      extra_params=extra_params,
                                      retrievers_params=self.retrievers_params,
                                      adaptive=True)
         self.api_clients_info = {}
-
-    def config_get(self, name):
-        try:
-            return self.config.get('main').get(name)
-        except AttributeError:
-            raise DataBridgeConfigError('In config dictionary missed section'
-                                        ' \'main\'')
 
     def create_api_client(self):
         client_user_agent = self.user_agent + '/' + self.bridge_id
@@ -184,9 +171,10 @@ class BasicDataBridge(object):
         while 1:
             try:
                 api_client = APIClient(
-                    host_url=self.api_host, user_agent=client_user_agent,
-                    api_version=self.api_version, key='',
-                    resource=self.workers_config['resource'])
+                    host_url=self.resources_api_server,
+                    user_agent=client_user_agent,
+                    api_version=self.resources_api_version, key='',
+                    resource=self.resource)
                 client_id = uuid.uuid4().hex
                 logger.info('Started api_client {}'.format(
                     api_client.session.headers['User-Agent']),
@@ -198,7 +186,7 @@ class BasicDataBridge(object):
                     'not_actual_count': 0
                 }
                 self.api_clients_info[api_client_dict['id']] = {
-                    'destroy': False,
+                    'drop_cookies': False,
                     'request_durations': {},
                     'request_interval': 0,
                     'avg_duration': 0
@@ -235,25 +223,13 @@ class BasicDataBridge(object):
                 extra={'MESSAGE_ID': 'received_from_sync'})
 
     def send_bulk(self, input_dict):
-        sleep_before_retry = 2
-        for i in xrange(0, 3):
-            try:
-                rows = self.db.view(self.view_path, keys=input_dict.values())
-                resp_dict = {k.id: k.key for k in rows}
-                break
-            except (IncompleteRead, Exception) as e:
-                logger.error('Error while send bulk {}'.format(e.message),
-                             extra={'MESSAGE_ID': 'exceptions'})
-                if i == 2:
-                    raise e
-                sleep(sleep_before_retry)
-                sleep_before_retry *= 2
+        resp_dict = self.db.filter_bulk(input_dict)
         for item_id, date_modified in input_dict.items():
             if item_id in resp_dict and date_modified == resp_dict[item_id]:
                 logger.debug('Ignored {} {}: SYNC - {}, EDGE - {}'.format(
                     self.workers_config['resource'][:-1], item_id,
                     date_modified, resp_dict[item_id]),
-                    extra={'MESSAGE_ID': 'skiped'})
+                    extra={'MESSAGE_ID': 'skipped'})
             else:
                 self.resource_items_queue.put(
                     {'id': item_id, 'dateModified': date_modified})
@@ -290,23 +266,6 @@ class BasicDataBridge(object):
                     self.send_bulk(input_dict)
                     input_dict = {}
                 start_time = datetime.now()
-
-    def resource_items_filter(self, r_id, r_date_modified):
-        try:
-            local_document = self.db.get(r_id)
-            if local_document:
-                if local_document['dateModified'] < r_date_modified:
-                    return True
-                else:
-                    return False
-            else:
-                return True
-        except Exception as e:
-            logger.error(
-                'Filter error: Error while getting {} {} from couchdb: '
-                '{}'.format(self.workers_config['resource'][:-1], r_id,
-                            e.message), extra={'MESSAGE_ID': 'exceptions'})
-            return True
 
     def _get_average_requests_duration(self):
         req_durations = []
@@ -368,13 +327,6 @@ class BasicDataBridge(object):
 
     def gevent_watcher(self):
         self.perfomance_watcher()
-        for t in self.server.tasks():
-            if (t['type'] == 'indexer' and t['database'] == self.db_name and
-                    t.get('design_document', None) == '_design/{}'.format(
-                        self.workers_config['resource'])):
-                logger.info(
-                    'Watcher: Waiting for end of view indexing. Current'
-                    ' progress: {} %'.format(t['progress']))
 
         # Check fill threads
         input_threads = 1
@@ -451,16 +403,14 @@ class BasicDataBridge(object):
         # Mark bad api clients
         for cid, info in self.api_clients_info.items():
             if info.get('grown', False) and info['avg_duration'] > dev:
-                info['destroy'] = True
-                self.create_api_client()
+                info['drop_cookies'] = True
                 logger.debug(
                     'Perfomance watcher: Mark client {} as bad, avg.'
                     ' request_duration is {} sec.'.format(
                         cid, info['avg_duration']),
                     extra={'MESSAGE_ID': 'marked_as_bad'})
             elif info['avg_duration'] < dev and info['request_interval'] > 0:
-                self.create_api_client()
-                info['destroy'] = True
+                info['drop_cookies'] = True
                 logger.debug(
                     'Perfomance watcher: Mark client {} as bad,'
                     ' request_interval is {} sec.'.format(
@@ -500,8 +450,6 @@ class BasicDataBridge(object):
                        'REQUESTS_MAX_AVG': max_avg,
                        'REQUESTS_AVG': avg_duration * 1000})
             self._mark_bad_clients(dev)
-            clear_api_client_queue(self.api_clients_queue,
-                                   self.api_clients_info)
 
     def run(self):
         logger.info('Start Basic Bridge',
