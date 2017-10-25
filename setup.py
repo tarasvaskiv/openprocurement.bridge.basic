@@ -34,6 +34,9 @@ entry_points = {
     'openprocurement.bridge.basic.plugins': [
         'couchdb = openprocurement.bridge.basic.storages.couchdb_plugin:includme',
         'elasticsearch = openprocurement.bridge.basic.storages.elasticsearch_plugin:includme'
+    ],
+    'openprocurement.tests': [
+        'bridge.basic = openprocurement.bridge.basic.tests.main:suite'
     ]
 }
 
