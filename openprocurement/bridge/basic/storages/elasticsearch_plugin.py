@@ -2,6 +2,7 @@
 import logging
 from elasticsearch import Elasticsearch
 from functools import partial
+from openprocurement.ocds.export.models import get_extensions
 
 
 LOGGER = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ class ElasticsearchStorage(object):
         for k, v in bulk.items():
             doc = v.copy()
             del doc['_id']
+            doc = get_extensions(doc)
             if '_ver' in doc:
                 body.append({
                     "index": {"_id": k, "_type": self.doc_type.title(),
