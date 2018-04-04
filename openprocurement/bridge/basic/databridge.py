@@ -10,7 +10,8 @@ import argparse
 import uuid
 import gevent.pool
 from yaml import load
-from urlparse import urlparse
+from six.moves.urllib.parse import  urlparse
+from six.moves import xrange, map
 from openprocurement_client.exceptions import RequestFailed
 from openprocurement_client.clients import APIResourceClient as APIClient
 from openprocurement_client.resources.sync import ResourceFeeder
@@ -203,7 +204,7 @@ class BasicDataBridge(object):
                 sleep(timeout)
             except Exception as e:
                 logger.error(
-                    'Failed start api client with error: {}'.format(e.message),
+                    'Failed start api client with error: {}'.format(str(e)),
                     extra={'MESSAGE_ID': 'exceptions'})
                 timeout = timeout * 2
                 logger.info(
@@ -333,7 +334,7 @@ class BasicDataBridge(object):
         if self.input_queue_filler.exception:
             input_threads = 0
             logger.error('Temp queue filler error: {}'.format(
-                self.input_queue_filler.exception.message),
+                self.input_queue_filler.exception),
                 extra={'MESSAGE_ID': 'exception'})
             self.input_queue_filler = spawn(self.fill_input_queue)
         logger.info('Input threads {}'.format(input_threads),
@@ -342,7 +343,7 @@ class BasicDataBridge(object):
         if self.filler.exception:
             fill_threads = 0
             logger.error('Fill thread error: {}'.format(
-                self.filler.exception.message),
+                self.filler.exception),
                 extra={'MESSAGE_ID': 'exception'})
             self.filler = spawn(self.fill_resource_items_queue)
         logger.info('Filter threads {}'.format(fill_threads),
@@ -392,8 +393,11 @@ class BasicDataBridge(object):
     def _calculate_st_dev(self, values):
         if len(values) > 0:
             avg = sum(values) * 1.0 / len(values)
-            variance = map(lambda x: (x - avg) ** 2, values)
-            avg_variance = sum(variance) * 1.0 / len(variance)
+            variance = [
+               (item - avg) ** 2
+               for item in values
+            ]
+            avg_variance = sum(variance) * 1.0 / len(list(variance))
             st_dev = math.sqrt(avg_variance)
             return round(st_dev, 3)
         else:

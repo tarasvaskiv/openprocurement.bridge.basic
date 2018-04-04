@@ -3,7 +3,8 @@ import logging
 from couchdb import Server, Session
 from couchdb.design import ViewDefinition
 from time import sleep
-from httplib import IncompleteRead
+from six.moves.http_client import IncompleteRead
+from six.moves import xrange
 
 
 LOGGER = logging.getLogger(__name__)
@@ -86,14 +87,18 @@ class CouchDBStorage(object):
         :param keys: List of docs ids
         :return: dict: key: doc_id, value: dateModified
         """
+
         sleep_before_retry = 2
         for i in xrange(0, 3):
             try:
-                rows = self.db.view(self.view_path, keys=bulk.values())
+                rows = self.db.view(
+                    self.view_path,
+                    keys=[item for item in bulk.values()]
+                    )
                 resp_dict = {k.id: k.key for k in rows}
                 return resp_dict
             except (IncompleteRead, Exception) as e:
-                LOGGER.error('Error while send bulk {}'.format(e.message),
+                LOGGER.error('Error while send bulk {}'.format(str(e)),
                              extra={'MESSAGE_ID': 'exceptions'})
                 if i == 2:
                     raise
@@ -107,7 +112,10 @@ class CouchDBStorage(object):
         :return: list: List of tuples with id, success: boolean, reason:
         if success is str: state else exception object
         """
-        res = self.db.update(bulk.values())
+        res = self.db.update([
+                item for item in
+                bulk.values()
+            ])
         results = []
         for success, doc_id, reason in res:
             if success:
