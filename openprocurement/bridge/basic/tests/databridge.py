@@ -75,8 +75,8 @@ class TestBasicDataBridge(unittest.TestCase):
             'storage': {
                 'host': "127.0.0.1",
                 'port': 5984,
-                'user': "",
-                'password': "",
+                'user': "admin",
+                'password': "admin",
                 'db_name': 'test_db'
             },
             'retrievers_params': {
