@@ -5,7 +5,7 @@ before_script:
   - sudo apt-get -qq update
   - sudo apt-get install libsodium13 -y
 python:
-  - "2.7"
+  - "3.6"
 services:
   - couchdb
 cache:
@@ -13,7 +13,8 @@ cache:
     - eggs
 before_install:
   - pip install setuptools python-coveralls
-  - python2 bootstrap.py
+  - python3 bootstrap.py
+  - curl -X PUT localhost:5984/_config/admins/admin -d '"admin"'
 install:
   - bin/buildout -N
 script:
