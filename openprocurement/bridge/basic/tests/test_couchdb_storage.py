@@ -36,8 +36,8 @@ class TestCouchDBStorage(unittest.TestCase):
             'Database error: {}'.format(repr(Unauthorized('')))
         )
         storage_conf = deepcopy(self.storage_conf)
-        del storage_conf['storage']['user']
-        del storage_conf['storage']['password']
+        storage_conf['storage']['user'] = 'admin'
+        storage_conf['storage']['password'] = 'admin'
         cb = CouchDBStorage(storage_conf, 'tenders')
         cb._prepare_couchdb()
         mocked_logger.info.assert_has_calls([
