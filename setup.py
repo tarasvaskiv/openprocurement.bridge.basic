@@ -8,7 +8,6 @@ here = os.path.abspath(os.path.dirname(__file__))
 requires = [
     'cornice',
     'gevent',
-    'pyramid_exclog',
     'setuptools',
     'pycrypto',
     'openprocurement_client',
