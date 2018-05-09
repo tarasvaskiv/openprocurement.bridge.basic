@@ -6,10 +6,8 @@ version = '0.1.1a1+python3'
 here = os.path.abspath(os.path.dirname(__file__))
 
 requires = [
-    'cornice',
     'gevent',
     'setuptools',
-    'pycrypto',
     'openprocurement_client',
     'munch',
     'tzlocal',
