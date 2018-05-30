@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
+
 from couchdb import Server, Session
 from couchdb.design import ViewDefinition
-from time import sleep
-from httplib import IncompleteRead
 
 
 LOGGER = logging.getLogger(__name__)
@@ -17,25 +16,23 @@ VALIDATE_BULK_DOCS_UPDATE = """function(newDoc, oldDoc, userCtx) {
 
 class CouchDBStorage(object):
 
-    def __init__(self, conf, resource):
+    def __init__(self, conf):
         self.config = conf
         user = self.config['storage'].get('user', '')
         password = self.config['storage'].get('password', '')
+        self.bulk_query_limit = self.config['storage']['bulk_query_limit']
+        self.bulk_query_interval = self.config['storage']['bulk_query_interval']
         if (user and password):
-            self.couch_url = "http://{user}:{password}@{host}:{port}".format(
-                **self.config['storage'])
+            self.couch_url = "http://{user}:{password}@{host}:{port}".format(**self.config['storage'])
         else:
-            self.couch_url = "http://{host}:{port}".format(
-                **self.config['storage'])
+            self.couch_url = "http://{host}:{port}".format(**self.config['storage'])
         self.db_name = self.config['storage'].get('db_name', 'bridge_db')
-        self.resource = resource
+        self.resource = self.config['resource']
         self._prepare_couchdb()
-        self.view_path = '_design/{}/_view/by_dateModified'.format(
-            self.resource)
+        self.view_path = '_design/{}/_view/by_dateModified'.format(self.resource)
 
     def _prepare_couchdb(self):
-        server = Server(self.couch_url,
-                        session=Session(retry_delays=range(10)))
+        server = Server(self.couch_url, session=Session(retry_delays=range(10)))
         try:
             if self.db_name not in server:
                 self.db = server.create(self.db_name)
@@ -55,13 +52,11 @@ class CouchDBStorage(object):
                 }
             }
             emit(doc.dateModified, data);
-        }}''' % dict(resource=self.resource[:-1].title(),
-                    doc_type=self.resource[:-1])
+        }}''' % dict(resource=self.resource[:-1].title(), doc_type=self.resource[:-1])
         )
         by_date_modified_view.sync(self.db)
 
-        validate_doc = self.db.get(VALIDATE_BULK_DOCS_ID,
-                                   {'_id': VALIDATE_BULK_DOCS_ID})
+        validate_doc = self.db.get(VALIDATE_BULK_DOCS_ID, {'_id': VALIDATE_BULK_DOCS_ID})
         if validate_doc.get('validate_doc_update') != VALIDATE_BULK_DOCS_UPDATE:
             validate_doc['validate_doc_update'] = VALIDATE_BULK_DOCS_UPDATE
             self.db.save(validate_doc)
@@ -69,36 +64,16 @@ class CouchDBStorage(object):
         else:
             LOGGER.info('Validate document update view already exist.')
 
-    def get_doc(self, doc_id):
+    def get_doc(self, doc_id, default=None):
         """
-        Trying get doc with doc_id from storage and return doc dict if
-        doc exist else None
+        Trying get doc with doc_id from storage and return doc dict if doc exist else default
         :param doc_id:
-        :return: dict: or None
+        :return: dict: or default
         """
-        doc = self.db.get(doc_id)
-        return doc
+        return self.db.get(doc_id, default)
 
-    def filter_bulk(self, bulk):
-        """
-        Receiving list of docs ids and checking existing in storage, return
-        dict where key is doc_id and value - dateModified if doc exist
-        :param keys: List of docs ids
-        :return: dict: key: doc_id, value: dateModified
-        """
-        sleep_before_retry = 2
-        for i in xrange(0, 3):
-            try:
-                rows = self.db.view(self.view_path, keys=bulk.values())
-                resp_dict = {k.id: k.key for k in rows}
-                return resp_dict
-            except (IncompleteRead, Exception) as e:
-                LOGGER.error('Error while send bulk {}'.format(e.message),
-                             extra={'MESSAGE_ID': 'exceptions'})
-                if i == 2:
-                    raise
-                sleep(sleep_before_retry)
-                sleep_before_retry *= 2
+    def save_doc(self, doc):
+        return self.db.save(doc)
 
     def save_bulk(self, bulk):
         """
@@ -124,5 +99,4 @@ class CouchDBStorage(object):
 
 
 def includme(config):
-    resource = config.get('resource', 'tenders')
-    config['storage_obj'] = CouchDBStorage(config, resource)
+    return CouchDBStorage(config)
