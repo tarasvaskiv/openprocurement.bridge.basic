@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 import logging
-from elasticsearch import Elasticsearch
 from functools import partial
 
+from elasticsearch import Elasticsearch
+from zope.interface import implementer
+
+from openprocurement.bridge.basic.interfaces import IStorage
 
 LOGGER = logging.getLogger(__name__)
 STORAGE_DEFAULTS = {
@@ -13,25 +16,21 @@ STORAGE_DEFAULTS = {
 }
 
 
+@implementer(IStorage)
 class ElasticsearchStorage(object):
 
-    def __init__(self, conf, resource):
-        STORAGE_DEFAULTS.update(conf.get('storage', {}))
+    def __init__(self, conf):
+        STORAGE_DEFAULTS.update(conf.get('storage_config', {}))
         for name, value in STORAGE_DEFAULTS.items():
             setattr(self, name, value)
-        self.doc_type = resource
+        self.doc_type = conf['resource']
         self.db = Elasticsearch('{}:{}'.format(self.host, self.port))
         self.db.indices.create(index=self.db_name, ignore=400)
         self.db.indices.put_alias(index=self.db_name, name=self.alias)
-        settings = self.db.indices.get_settings(
-            index=self.db_name,
-            name='index.mapping.total_fields.limit')
-        if settings.get(self.db_name, {}).get(u'settings', {}) \
-                   .get(u'index',{}).get(u'mapping', {}) \
+        settings = self.db.indices.get_settings(index=self.db_name, name='index.mapping.total_fields.limit')
+        if settings.get(self.db_name, {}).get(u'settings', {}).get(u'index', {}).get(u'mapping', {}) \
                    .get(u'total_fields', {}).get(u'limit', u'1000') != u'4000':
-            self.db.indices.put_settings(
-                body={'index.mapping.total_fields.limit': 4000},
-                index=self.db_name)
+            self.db.indices.put_settings(body={'index.mapping.total_fields.limit': 4000}, index=self.db_name)
         self.db.index_get = partial(self.db.get, index=self.alias)
         self.db.index_bulk = partial(self.db.bulk, index=self.alias)
 
@@ -51,7 +50,6 @@ class ElasticsearchStorage(object):
                                 if '_source' in k else k['found'])
                      for k in rows['docs']}
         return resp_dict
-
 
     def save_bulk(self, bulk):
         """
@@ -81,9 +79,7 @@ class ElasticsearchStorage(object):
         for item in res['items']:
             success = item['index']['status'] in [200, 201]
             doc_id = item['index']['_id']
-            result = item['index']['result'] if 'result' in item[
-                'index'] else \
-                item['index']['error']['reason']
+            result = item['index']['result'] if 'result' in item['index'] else item['index']['error']['reason']
             if not success and result != u'Mapping reason message':
                 # TODO: Catch real mapping message and replace ^
                 result = 'skipped'
@@ -98,9 +94,7 @@ class ElasticsearchStorage(object):
         :param doc_id:
         :return: dict: or None
         """
-        doc = self.db.index_get(
-            doc_type=self.doc_type.title(), id=doc_id, ignore=[404]
-        )
+        doc = self.db.index_get(doc_type=self.doc_type.title(), id=doc_id, ignore=[404])
         if doc and '_source' in doc:
             source = doc['_source']
             ver = doc['_version']
@@ -110,7 +104,9 @@ class ElasticsearchStorage(object):
             doc = None
         return doc
 
+    def save_doc(doc):
+        pass
+
 
 def includme(config):
-    resource = config.get('resource', 'tenders')[:-1]
-    config['storage_obj'] = ElasticsearchStorage(config, resource)
+    return ElasticsearchStorage(config)

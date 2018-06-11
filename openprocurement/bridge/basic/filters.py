@@ -9,12 +9,16 @@ from time import time, sleep
 
 from gevent.greenlet import Greenlet
 from gevent.queue import Empty
+from zope.interface import implementer
+
+from openprocurement.bridge.basic.interfaces import IFilter
 
 
 logger = logging.getLogger(__name__)
 
 
-class CouchDBBasicFilter(Greenlet):
+@implementer(IFilter)
+class BasicCouchDBFilter(Greenlet):
 
     def __init__(self, conf, input_queue, filtered_queue, db):
         Greenlet.__init__(self)

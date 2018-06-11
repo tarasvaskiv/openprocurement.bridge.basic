@@ -3,7 +3,9 @@ import logging
 
 from couchdb import Server, Session
 from couchdb.design import ViewDefinition
+from zope.interface import implementer
 
+from openprocurement.bridge.basic.interfaces import IStorage
 
 LOGGER = logging.getLogger(__name__)
 VALIDATE_BULK_DOCS_ID = '_design/validate_date_modified'
@@ -14,6 +16,7 @@ VALIDATE_BULK_DOCS_UPDATE = """function(newDoc, oldDoc, userCtx) {
 }"""
 
 
+@implementer(IStorage)
 class CouchDBStorage(object):
 
     def __init__(self, conf):

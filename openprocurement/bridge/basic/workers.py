@@ -15,6 +15,7 @@ from gevent.queue import Empty
 from iso8601 import parse_date
 from pytz import timezone
 from requests.exceptions import ConnectionError
+from zope.interface import implementer
 
 from openprocurement_client.exceptions import (
     InvalidResponse,
@@ -22,13 +23,15 @@ from openprocurement_client.exceptions import (
     ResourceNotFound,
     ResourceGone
 )
+from openprocurement.bridge.basic.interfaces import IWorker
 
 
 logger = logging.getLogger(__name__)
 TZ = timezone(os.environ['TZ'] if 'TZ' in os.environ else 'Europe/Kiev')
 
 
-class ResourceItemWorker(Greenlet):
+@implementer(IWorker)
+class BasicResourceItemWorker(Greenlet):
 
     def __init__(self, api_clients_queue=None, resource_items_queue=None,
                  db=None, config_dict=None, retry_resource_items_queue=None,
