@@ -34,23 +34,6 @@ class ElasticsearchStorage(object):
         self.db.index_get = partial(self.db.get, index=self.alias)
         self.db.index_bulk = partial(self.db.bulk, index=self.alias)
 
-    def filter_bulk(self, bulk):
-        """
-        Receiving list of docs ids and checking existing in storage, return
-        dict where key is doc_id and value - dateModified if doc exist
-        else value - False
-        :param keys: List of docs ids
-        :return: dict: key: doc_id, value: dateModified or False
-        """
-        rows = self.db.mget(
-            index=self.alias, doc_type=self.doc_type.title(),
-            body={"ids": bulk.keys()}, _source_include="dateModified"
-        )
-        resp_dict = {k['_id']: (k['_source']['dateModified']
-                                if '_source' in k else k['found'])
-                     for k in rows['docs']}
-        return resp_dict
-
     def save_bulk(self, bulk):
         """
         Save to storage bulk data
@@ -73,8 +56,7 @@ class ElasticsearchStorage(object):
                               "_index": self.alias}
                 })
             body.append(doc)
-        res = self.db.index_bulk(body=body,
-                                 doc_type=self.doc_type.title())
+        res = self.db.index_bulk(body=body, doc_type=self.doc_type.title())
         results = []
         for item in res['items']:
             success = item['index']['status'] in [200, 201]
