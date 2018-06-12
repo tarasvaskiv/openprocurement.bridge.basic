@@ -36,8 +36,8 @@ entry_points = {
         'elasticsearch = openprocurement.bridge.basic.storages.elasticsearch_plugin:includme'
     ],
     'openprocurement.bridge.basic.filter_plugins': [
-        'basic_couchdb = openprocurement.bridge.basic.fiters:BasicCouchDBFilter',
-        'basic_elasticsearch = openprocurement.bridge.basic.fiters:BasicElasticSearchFilter'
+        'basic_couchdb = openprocurement.bridge.basic.filters:BasicCouchDBFilter',
+        'basic_elasticsearch = openprocurement.bridge.basic.filters:BasicElasticSearchFilter'
     ],
     'openprocurement.bridge.basic.worker_plugins': [
         'basic_couchdb = openprocurement.bridge.basic.workers:BasicResourceItemWorker'

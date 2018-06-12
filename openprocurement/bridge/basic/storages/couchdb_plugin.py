@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-
+from requests import Session
 from couchdb import Server, Session
 from couchdb.design import ViewDefinition
 from zope.interface import implementer
@@ -21,15 +21,16 @@ class CouchDBStorage(object):
 
     def __init__(self, conf):
         self.config = conf
-        user = self.config['storage'].get('user', '')
-        password = self.config['storage'].get('password', '')
-        self.bulk_query_limit = self.config['storage']['bulk_query_limit']
-        self.bulk_query_interval = self.config['storage']['bulk_query_interval']
+        user = self.config['storage_config'].get('user', '')
+        password = self.config['storage_config'].get('password', '')
+        self.bulk_query_limit = self.config['storage_config'].get('bulk_query_limit', 10)
+        self.bulk_query_interval = self.config['storage_config'].get('bulk_query_interval', 2)
         if (user and password):
-            self.couch_url = "http://{user}:{password}@{host}:{port}".format(**self.config['storage'])
+            self.couch_url = "http://{user}:{password}@{host}:{port}".format(
+                **self.config['storage_config'])
         else:
-            self.couch_url = "http://{host}:{port}".format(**self.config['storage'])
-        self.db_name = self.config['storage'].get('db_name', 'bridge_db')
+            self.couch_url = "http://{host}:{port}".format(**self.config['storage_config'])
+        self.db_name = self.config['storage_config'].get('db_name', 'bridge_db')
         self.resource = self.config['resource']
         self._prepare_couchdb()
         self.view_path = '_design/{}/_view/by_dateModified'.format(self.resource)
@@ -81,6 +82,7 @@ class CouchDBStorage(object):
     def save_bulk(self, bulk):
         """
         Save to storage bulk data
+
         :param bulk: Dict where key: doc_id, value: document
         :return: list: List of tuples with id, success: boolean, reason:
         if success is str: state else exception object

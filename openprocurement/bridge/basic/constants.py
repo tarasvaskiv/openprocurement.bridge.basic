@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 DEFAULTS = {
     'worker_config': {
-        'worker_type': 'basic',
+        'worker_type': 'basic_couchdb',
         'client_inc_step_timeout': 0.1,
         'client_dec_step_timeout': 0.02,
         'drop_threshold_client_cookies': 2,
@@ -24,6 +24,7 @@ DEFAULTS = {
         "bulk_query_interval": 3,
         "bulk_query_limit": 100,
     },
+    'filter_type': 'basic_couchdb',
     'retrievers_params': {
         'down_requests_sleep': 5,
         'up_requests_sleep': 1,
@@ -34,14 +35,15 @@ DEFAULTS = {
         "mode": "_all_",
         "limit": 1000
     },
-    'resources_api_server': '',
+    'resources_api_server': 'http://localhost:1234',
     'resources_api_version': "0",
-    'public_resources_api_server': '',
+    'public_resources_api_server': 'http://localhost:1234',
     'resource': 'tenders',
     'workers_inc_threshold': 75,
     'workers_dec_threshold': 35,
     'workers_min': 1,
     'workers_max': 3,
+    'filter_workers_count': 1,
     'retry_workers_min': 1,
     'retry_workers_max': 2,
     'retry_resource_items_queue_size': -1,

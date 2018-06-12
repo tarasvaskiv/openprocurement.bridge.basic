@@ -22,7 +22,7 @@ from pkg_resources import iter_entry_points
 from yaml import load
 
 from openprocurement.bridge.basic.constants import DEFAULTS
-from openprocurement.bridge.utils import DataBridgeConfigError
+from openprocurement.bridge.basic.utils import DataBridgeConfigError
 
 
 try:
@@ -51,7 +51,7 @@ class BasicDataBridge(object):
         self.api_version = self.config.get('resources_api_version')
         self.retrievers_params = self.config.get('retrievers_params')
         self.storage_type = self.config['storage_config'].get('storage_type', 'couchdb')
-        self.worker_type = self.config['worker_config'].get('worker_type', 'basic')
+        self.worker_type = self.config['worker_config'].get('worker_type', 'basic_couchdb')
 
         # Check up_wait_sleep
         up_wait_sleep = self.retrievers_params.get('up_wait_sleep')
@@ -86,9 +86,9 @@ class BasicDataBridge(object):
         if self.api_host != '' and self.api_host is not None:
             api_host = urlparse(self.api_host)
             if api_host.scheme == '' and api_host.netloc == '':
-                raise DataBridgeConfigError('Invalid \'tenders_api_server\' url.')
+                raise DataBridgeConfigError('Invalid \'resources_api_server\' url.')
         else:
-            raise DataBridgeConfigError('In config dictionary empty or missing \'tenders_api_server\'')
+            raise DataBridgeConfigError('In config dictionary empty or missing \'resources_api_server\'')
 
         # Connecting storage plugin
         for entry_point in iter_entry_points('openprocurement.bridge.basic.storage_plugins', self.storage_type):
@@ -98,8 +98,7 @@ class BasicDataBridge(object):
         if hasattr(self, 'filter_type'):
             for entry_point in iter_entry_points('openprocurement.bridge.basic.filter_plugins', self.filter_type):
                 self.filter_greenlet = entry_point.load()
-
-        for entry_point in iter_entry_points('openprocurement.brdige.basic.worker_plugins', self.worker_type):
+        for entry_point in iter_entry_points('openprocurement.bridge.basic.worker_plugins', self.worker_type):
             self.worker_greenlet = entry_point.load()
 
         self.feeder = ResourceFeeder(host=self.api_host,
@@ -117,7 +116,7 @@ class BasicDataBridge(object):
             try:
                 api_client = APIClient(
                     host_url=self.api_host, user_agent=client_user_agent, api_version=self.api_version, key='',
-                    resource=self.workers_config['resource']
+                    resource=self.resource
                 )
                 client_id = uuid.uuid4().hex
                 logger.info(
@@ -160,7 +159,7 @@ class BasicDataBridge(object):
         for resource_item in self.feeder.get_resource_items():
             self.input_queue.put(resource_item)
             logger.debug(
-                'Add to temp queue from sync: {} {} {}'.format(self.workers_config['resource'][:-1],
+                'Add to temp queue from sync: {} {} {}'.format(self.resource[:-1],
                                                                resource_item[1]['id'],
                                                                resource_item[1]['dateModified']),
                 extra={'MESSAGE_ID': 'received_from_sync', 'TEMP_QUEUE_SIZE': self.input_queue.qsize()}
@@ -195,7 +194,7 @@ class BasicDataBridge(object):
                 self.create_api_client()
                 w = self.worker_greenlet.spawn(self.api_clients_queue,
                                                self.resource_items_queue,
-                                               self.db, self.workers_config,
+                                               self.db, self.config,
                                                self.retry_resource_items_queue,
                                                self.api_clients_info)
                 self.workers_pool.add(w)
@@ -244,7 +243,7 @@ class BasicDataBridge(object):
             for i in xrange(0, (self.workers_min - len(self.workers_pool))):
                 w = self.worker_greenlet.spawn(self.api_clients_queue,
                                                self.resource_items_queue,
-                                               self.db, self.workers_config,
+                                               self.db, self.config,
                                                self.retry_resource_items_queue,
                                                self.api_clients_info)
                 self.workers_pool.add(w)
@@ -257,7 +256,7 @@ class BasicDataBridge(object):
                 self.create_api_client()
                 w = self.worker_greenlet.spawn(self.api_clients_queue,
                                                self.retry_resource_items_queue,
-                                               self.db, self.workers_config,
+                                               self.db, self.config,
                                                self.retry_resource_items_queue,
                                                self.api_clients_info)
                 self.retry_workers_pool.add(w)

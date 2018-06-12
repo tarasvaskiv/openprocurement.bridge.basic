@@ -28,8 +28,8 @@ class BasicCouchDBFilter(Greenlet):
         self.db = db
         self.resource = self.config['resource']
         self.view_path = '_design/{}/_view/by_dateModified'.format(self.resource)
-        self.bulk_query_interval = self.config['storage']['bulk_query_interval']
-        self.bulk_query_limit = self.config['storage']['bulk_query_limit']
+        self.bulk_query_interval = self.config['storage_config']['bulk_query_interval']
+        self.bulk_query_limit = self.config['storage_config']['bulk_query_limit']
 
     def _check_bulk(self, bulk, priority_cache):
         sleep_before_retry = 2
@@ -111,8 +111,8 @@ class BasicElasticSearchFilter(BasicCouchDBFilter):
         self.input_queue = input_queue
         self.filtered_queue = filtered_queue
         self.db = db
-        self.bulk_query_interval = self.config['storage']['bulk_query_interval']
-        self.bulk_query_limit = self.config['storage']['bulk_query_limit']
+        self.bulk_query_interval = self.config['storage_config']['bulk_query_interval']
+        self.bulk_query_limit = self.config['storage_config']['bulk_query_limit']
 
     def _check_bulk(self, bulk, priority_cache):
         for i in xrange(0, 3):
