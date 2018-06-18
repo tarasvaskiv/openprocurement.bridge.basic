@@ -15,6 +15,7 @@ from openprocurement.bridge.basic.interfaces import IFilter
 
 
 logger = logging.getLogger(__name__)
+INFINITY = True
 
 
 @implementer(IFilter)
@@ -53,21 +54,19 @@ class BasicCouchDBFilter(Greenlet):
         for item_id, date_modified in bulk.items():
             if item_id in resp_dict and date_modified == resp_dict[item_id]:
                 logger.debug(
-                    'Skipped {} {}: In db exist newest.'.format(self.workers_config['resource'][:-1], item_id),
+                    'Skipped {} {}: In db exist newest.'.format(self.resource[:-1], item_id),
                     extra={'MESSAGE_ID': 'skipped'}
                 )
             elif ((1, item_id) not in self.filtered_queue.queue and
                     (1000, item_id) not in self.filtered_queue.queue):
                 self.filtered_queue.put((priority_cache[item_id], item_id))
                 logger.debug(
-                    'Put to main queue {}: {}'.format(self.workers_config['resource'][:-1], item_id),
+                    'Put to main queue {}: {}'.format(self.resource[:-1], item_id),
                     extra={'MESSAGE_ID': 'add_to_resource_items_queue'}
                 )
             else:
                 logger.debug(
-                    'Skipped {} {}: In queue exist with same id'.format(
-                        self.workers_config['resource'][:-1], item_id
-                    ),
+                    'Skipped {} {}: In queue exist with same id'.format(self.resource[:-1], item_id),
                     extra={'MESSAGE_ID': 'skipped'}
                 )
 
@@ -75,7 +74,7 @@ class BasicCouchDBFilter(Greenlet):
         start_time = datetime.now()
         input_dict = {}
         priority_cache = {}
-        while True:
+        while INFINITY:
             # Get resource_item from temp queue
             if not self.input_queue.empty():
                 priority, resource_item = self.input_queue.get()
@@ -115,26 +114,22 @@ class BasicElasticSearchFilter(BasicCouchDBFilter):
         self.bulk_query_limit = self.config['storage_config']['bulk_query_limit']
 
     def _check_bulk(self, bulk, priority_cache):
-        for i in xrange(0, 3):
-            logger.debug(
-                'Send check bulk: {}'.format(len(bulk)), extra={'CHECK_BULK_LEN': len(bulk)}
-            )
-            start = time()
-            rows = self.db.mget(
-                index=self.alias, doc_type=self.doc_type.title(),
-                body={"ids": bulk.keys()}, _source_include="dateModified"
-            )
-            end = time() - start
-            logger.debug('Duration bulk check: {} sec.'.format(end), extra={'CHECK_BULK_DURATION': end * 1000})
-            for item in rows['docs']:
-                doc_id = item['_id']
-                date_modified = item['_source']['dateModified'] if '_source' in item else item['found']
-                if date_modified != bulk[doc_id] and ((1, doc_id) not in self.filtered_queue.queue and
-                                                      (1000, doc_id) not in self.filtered_queue.queue):
-                    self.filtered_queue.put((priority_cache[doc_id], doc_id))
-                else:
-                    logger.debug(
-                        'Ignored {}: SYNC - {}, ElasticSearch or Queue - {}'.format(
-                            doc_id, bulk[doc_id], date_modified),
-                        extra={'MESSAGE_ID': 'skipped'}
-                    )
+        logger.debug('Send check bulk: {}'.format(len(bulk)), extra={'CHECK_BULK_LEN': len(bulk)})
+        start = time()
+        rows = self.db.mget(
+            index=self.db.alias, doc_type=self.db.doc_type.title(),
+            body={"ids": bulk.keys()}, _source_include="dateModified"
+        )
+        end = time() - start
+        logger.debug('Duration bulk check: {} sec.'.format(end), extra={'CHECK_BULK_DURATION': end * 1000})
+        for item in rows['docs']:
+            doc_id = item['_id']
+            date_modified = item['_source']['dateModified'] if '_source' in item else item['found']
+            if date_modified != bulk[doc_id] and ((1, doc_id) not in self.filtered_queue.queue and
+                                                  (1000, doc_id) not in self.filtered_queue.queue):
+                self.filtered_queue.put((priority_cache[doc_id], doc_id))
+            else:
+                logger.debug(
+                    'Ignored {}: SYNC - {}, ElasticSearch or Queue - {}'.format(doc_id, bulk[doc_id], date_modified),
+                    extra={'MESSAGE_ID': 'skipped'}
+                )
