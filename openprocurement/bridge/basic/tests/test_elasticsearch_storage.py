@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import unittest
 from copy import deepcopy
-from datetime import datetime
 
 from mock import patch
 
@@ -15,39 +14,6 @@ class TestElasticsearchStorage(unittest.TestCase):
     config = deepcopy(TEST_CONFIG['main'])
     id_1 = '2bf7359509c2436d96f903c745d09ab5'
     id_2 = 'ffb2de965f02491bb44a9209cdc5c320'
-
-    # @patch('openprocurement.bridge.basic.storages.elasticsearch_plugin.Elasticsearch')
-    # def test_filter_bulk(self, mocked_elastic):
-    #     mocked_elastic().indices.get_settings.return_value = {}
-    #     db = ElasticsearchStorage(self.config)
-    #     bulk = {
-    #         self.id_1: '2017-10-10T12:22:19.781980+03:00',
-    #         self.id_2: datetime.now().isoformat()
-    #     }
-    #     rows = {
-    #         u'docs': [
-    #             {
-    #                 u'_type': u'Tender',
-    #                 u'_source': {
-    #                     u'dateModified': u'2017-10-10T12:22:19.781980+03:00'
-    #                 },
-    #                 u'_index': u'bridge_tenders',
-    #                 u'_version': 1,
-    #                 u'found': True,
-    #                 u'_id': u'2bf7359509c2436d96f903c745d09ab5'
-    #             },
-    #             {
-    #                 u'found': False,
-    #                 u'_type': u'Tender',
-    #                 u'_id': u'ffb2de965f02491bb44a9209cdc5c320',
-    #                 u'_index': u'bridge_tenders'
-    #             }
-    #         ]
-    #     }
-    #     db.db.mget.return_value = rows
-    #     resp_dict = db.filter_bulk(bulk)
-    #     self.assertEqual(resp_dict[self.id_1], bulk[self.id_1])
-    #     self.assertEqual(resp_dict[self.id_2], False)
 
     @patch('openprocurement.bridge.basic.storages.elasticsearch_plugin.Elasticsearch')
     def test_save_bulk(self, mocked_elastic):
