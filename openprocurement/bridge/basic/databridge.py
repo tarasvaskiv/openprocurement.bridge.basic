@@ -154,8 +154,8 @@ class BasicDataBridge(object):
             self.create_api_client()
 
     def fill_input_queue(self):
-        if not hasattr(self.db, 'filter'):
-            self.input_queue = self.resource_items_queue
+        # if not hasattr(self.db, 'filter'):
+        #     self.input_queue = self.resource_items_queue
         for resource_item in self.feeder.get_resource_items():
             self.input_queue.put(resource_item)
             logger.debug(
@@ -228,12 +228,12 @@ class BasicDataBridge(object):
             self.input_queue_filler = spawn(self.fill_input_queue)
         logger.info('Input threads {}'.format(input_threads), extra={'INPUT_THREADS': input_threads})
         fill_threads = 1
-        if hasattr(self, 'filter') and self.filler.ready():
+        if hasattr(self, 'queue_filter') and self.queue_filter.ready():
             fill_threads = 0
-            logger.error('Fill thread error: {}'.format(self.filler.exception.message),
+            logger.error('Fill thread error: {}'.format(self.queue_filter.exception.message),
                          extra={'MESSAGE_ID': 'exception'})
-            self.filler = self.filter_greenlet.spawn(self.config, self.input_queue,
-                                                     self.resource_items_queue, self.db)
+            self.queue_filter = self.filter_greenlet.spawn(self.config, self.input_queue,
+                                                           self.resource_items_queue, self.db)
         logger.info('Filter threads {}'.format(fill_threads), extra={'FILTER_THREADS': fill_threads})
 
         main_threads = self.workers_max - self.workers_pool.free_count()
@@ -338,8 +338,8 @@ class BasicDataBridge(object):
         logger.info('Start data sync...', extra={'MESSAGE_ID': 'basic_bridge__data_sync'})
         self.input_queue_filler = spawn(self.fill_input_queue)
         if hasattr(self, 'filter_greenlet'):
-            self.filler = self.filter_greenlet.spawn(self.config, self.input_queue,
-                                                     self.resource_items_queue, self.db)
+            self.queue_filter = self.filter_greenlet.spawn(self.config, self.input_queue,
+                                                           self.resource_items_queue, self.db)
         else:
             self.resource_items_queue = self.input_queue
         spawn(self.queues_controller)

@@ -108,67 +108,13 @@ class TestBasicDataBridge(unittest.TestCase):
         self.assertEqual(bridge.input_queue.qsize(), 1)
         self.assertEqual(bridge.input_queue.get(), return_value[0])
 
-    # def test_send_bulk(self):
-    #     old_date_modified = datetime.datetime.utcnow().isoformat()
-    #     id_1 = uuid.uuid4().hex
-    #     date_modified_1 = datetime.datetime.utcnow().isoformat()
-    #     id_2 = uuid.uuid4().hex
-    #     date_modified_2 = datetime.datetime.utcnow().isoformat()
-    #     input_dict = {id_1: date_modified_1, id_2: date_modified_2}
-    #     return_value = [
-    #         munchify({'id': id_1, 'key': date_modified_1}),
-    #         munchify({'id': id_2, 'key': old_date_modified})
-    #     ]
-    #     bridge = BasicDataBridge(self.config)
-    #     bridge.db.db.view = MagicMock(return_value=return_value)
-    #     self.assertEqual(bridge.resource_items_queue.qsize(), 0)
-    #     bridge.send_bulk(input_dict)
-    #     self.assertEqual(bridge.resource_items_queue.qsize(), 1)
-    #     bridge.db.db.view.side_effect = [Exception(), Exception(),
-    #                                      Exception('test')]
-    #     input_dict = {}
-    #     with self.assertRaises(Exception) as e:
-    #         bridge.send_bulk(input_dict)
-    #     self.assertEqual(e.exception.message, 'test')
-
-    # def test_fill_resource_items_queue(self):
-    #     bridge = BasicDataBridge(self.config)
-    #     db_dict_list = [
-    #         {
-    #             'id': uuid.uuid4().hex,
-    #             'dateModified': datetime.datetime.utcnow().isoformat()
-    #         },
-    #         {
-    #             'id': uuid.uuid4().hex,
-    #             'dateModified': datetime.datetime.utcnow().isoformat()
-    #         }]
-    #     with patch('__builtin__.True', AlmostAlwaysTrue(1)):
-    #         bridge.fill_resource_items_queue()
-    #     self.assertEqual(bridge.resource_items_queue.qsize(), 0)
-
-    #     for item in db_dict_list:
-    #         bridge.input_queue.put({
-    #             'id': item['id'],
-    #             'dateModified': datetime.datetime.utcnow().isoformat()
-    #         })
-    #     view_return_list = [
-    #         munchify({
-    #             'id': db_dict_list[0]['id'],
-    #             'key': db_dict_list[0]['dateModified']
-    #         })
-    #     ]
-    #     bridge.db.db.view = MagicMock(return_value=view_return_list)
-    #     with patch('__builtin__.True', AlmostAlwaysTrue(1)):
-    #         bridge.fill_resource_items_queue()
-    #     self.assertEqual(bridge.resource_items_queue.qsize(), 1)
-
     @patch('openprocurement.bridge.basic.databridge.spawn')
     @patch('openprocurement.bridge.basic.workers.BasicResourceItemWorker.spawn')
     @patch('openprocurement.bridge.basic.databridge.APIClient')
     def test_gevent_watcher(self, mock_APIClient, mock_riw_spawn, mock_spawn):
         bridge = BasicDataBridge(self.config)
-        bridge.filler = MagicMock()
-        bridge.filler.exception = Exception('test_filler')
+        bridge.queue_filter = MagicMock()
+        bridge.queue_filter.exception = Exception('test_filler')
         bridge.input_queue_filler = MagicMock()
         bridge.input_queue_filler.exception = Exception('test_temp_filler')
         self.assertEqual(bridge.workers_pool.free_count(),
@@ -207,9 +153,12 @@ class TestBasicDataBridge(unittest.TestCase):
 
     @patch('openprocurement.bridge.basic.databridge.APIClient')
     def test_create_api_client(self, mock_APIClient):
-        mock_APIClient.side_effect = [RequestFailed(), munchify({
-            'session': {'headers': {'User-Agent': 'test.agent'}}
-        })]
+        mock_APIClient.side_effect = [
+            RequestFailed(), Exception('Test create client exception'),
+            munchify({
+                'session': {'headers': {'User-Agent': 'test.agent'}}
+            })
+        ]
         bridge = BasicDataBridge(self.config)
         self.assertEqual(bridge.api_clients_queue.qsize(), 0)
         bridge.create_api_client()

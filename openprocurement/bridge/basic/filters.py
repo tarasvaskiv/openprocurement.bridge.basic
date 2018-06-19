@@ -22,6 +22,7 @@ INFINITY = True
 class BasicCouchDBFilter(Greenlet):
 
     def __init__(self, conf, input_queue, filtered_queue, db):
+        logger.info('Init Basic CouchDB Filter')
         Greenlet.__init__(self)
         self.config = conf
         self.input_queue = input_queue
@@ -40,7 +41,7 @@ class BasicCouchDBFilter(Greenlet):
                     'Send check bulk: {}'.format(len(bulk)), extra={'CHECK_BULK_LEN': len(bulk)}
                 )
                 start = time()
-                rows = self.db.view(self.view_path, keys=bulk.values())
+                rows = self.db.db.view(self.view_path, keys=bulk.values())
                 end = time() - start
                 logger.debug('Duration bulk check: {} sec.'.format(end), extra={'CHECK_BULK_DURATION': end * 1000})
                 resp_dict = {k.id: k.key for k in rows}

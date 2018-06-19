@@ -39,7 +39,7 @@ class TestBasicCouchDBFilter(unittest.TestCase):
             munchify({'id': self.id_2, 'key': self.old_date_modified}),
             munchify({'id': self.id_3, 'key': self.old_date_modified})
         ]
-        self.db.view.return_value = self.return_value
+        self.db.db.view.return_value = self.return_value
 
     def test__check_bulk(self):
         self.queue.put((1000, self.id_3))
@@ -49,7 +49,7 @@ class TestBasicCouchDBFilter(unittest.TestCase):
         couchdb_filter._check_bulk(self.bulk, self.priority_cache)
         self.assertEqual(self.queue.qsize(), 2)
 
-        self.db.view.side_effect = [Exception(), Exception(), Exception('test')]
+        self.db.db.view.side_effect = [Exception(), Exception(), Exception('test')]
         self.bulk = {}
         with self.assertRaises(Exception) as e:
             couchdb_filter._check_bulk(self.bulk, self.priority_cache)
@@ -61,7 +61,7 @@ class TestBasicCouchDBFilter(unittest.TestCase):
         self.input_queue.put((1, {'id': self.id_1, 'dateModified': self.date_modified_1}))
         self.input_queue.put((1, {'id': self.id_2, 'dateModified': self.date_modified_2}))
         self.input_queue.put((1, {'id': self.id_3, 'dateModified': self.date_modified_3}))
-        mocked_infinity.__nonzero__.side_effect = [True] * 5 + [False]
+        mocked_infinity.__nonzero__.side_effect = [True] * 5 + [False, False]
         self.assertEqual(self.queue.qsize(), 0)
         self.assertEqual(self.input_queue.qsize(), 3)
 

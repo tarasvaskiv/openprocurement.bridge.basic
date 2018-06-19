@@ -241,7 +241,7 @@ class BasicResourceItemWorker(Greenlet):
             try:
                 logger.debug('Try save bulk: {}'.format(len(self.bulk)), extra={'SAVE_BULK_LEN': len(self.bulk)})
                 start = time()
-                res = self.db.save_bulk(self.bulk.values())
+                res = self.db.save_bulk(self.bulk)
                 end = time() - start
                 logger.debug('Bulk save duration: {} sec.'.format(end), extra={'SAVE_BULK_DURATION': end})
                 for resource_item in self.bulk.values():
