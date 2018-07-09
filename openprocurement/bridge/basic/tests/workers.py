@@ -160,7 +160,8 @@ class TestResourceItemWorker(unittest.TestCase):
 
         # Get api_client with raise Empty exception
         api_clients_queue.put(client_dict2)
-        api_clients_queue.get = MagicMock(side_effect=Empty)
+        api_clients_queue = MagicMock()
+        api_clients_queue.get.side_effect = Empty
         api_client = worker._get_api_client_dict()
         self.assertEqual(api_client, None)
         del worker
