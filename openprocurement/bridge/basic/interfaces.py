@@ -5,14 +5,14 @@ from zope.interface import Interface
 class IStorage(Interface):
     """ Storage Interface """
 
-    def __init__(config):
+    def __init__(self, config):
         """
         Initialize storage object
 
         :param config: Dictionary with databridge config
         """
 
-    def get_doc(doc_id, default=None):
+    def get_doc(self, doc_id, default=None):
         """
         Trying retrieve document from storage by doc_id
 
@@ -22,14 +22,14 @@ class IStorage(Interface):
         :rtype: dict
         """
 
-    def save_doc(doc):
+    def save_doc(self, doc):
         """
         Save document to storage
 
         :param dict doc: Document
         """
 
-    def save_bulk(doc):
+    def save_bulk(self, doc):
         """
         Save to storage bulk documents
 
@@ -43,7 +43,7 @@ class IStorage(Interface):
 class IFilter(Interface):
     """ Databridge Filter Interface based on `gevent.greenlet.Greenlet` """
 
-    def __init__(conf, input_queue, filtered_queue, db):
+    def __init__(self, conf, input_queue, filtered_queue, db):
         """
         Filter initialization
 
@@ -53,7 +53,7 @@ class IFilter(Interface):
         :param object db: Database object where store documents
         """
 
-    def _run():
+    def _run(self):
         """ Method which start filtering """
 
 
