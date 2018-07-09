@@ -56,7 +56,7 @@ class TestBasicDataBridge(unittest.TestCase):
             server = Server(couch_url)
             del server[self.config['main']['storage_config']['db_name']]
         except Exception:
-            pass
+            logger.debug('Error while tearDown')
 
     def test_init(self):
         bridge = BasicDataBridge(self.config)

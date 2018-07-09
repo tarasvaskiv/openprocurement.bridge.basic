@@ -10,7 +10,7 @@ from datetime import datetime
 from time import time
 
 from gevent import Greenlet
-from gevent import spawn, sleep
+from gevent import sleep
 from gevent.queue import Empty
 from iso8601 import parse_date
 from pytz import timezone

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 
-from yaml import load
+from yaml import safe_load
 
 
 CONFIG_FILE = "{}/test.yml".format(os.path.dirname(__file__))
 with open(CONFIG_FILE, 'r') as f:
-    TEST_CONFIG = load(f.read())
+    TEST_CONFIG = safe_load(f.read())
 
 
 class MockedResponse(object):

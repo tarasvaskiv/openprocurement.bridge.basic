@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-from requests import Session
 from couchdb import Server, Session
 from couchdb.design import ViewDefinition
 from zope.interface import implementer
