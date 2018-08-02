@@ -21,7 +21,8 @@ main:
     db_name: "basic_bridge_db"
     bulk_query_interval: 3
     bulk_query_limit: 100
-  filter_type: 'basic_couchdb'
+  filter_config:
+    filter_type: 'basic_couchdb'
   retrievers_params:
     down_requests_sleep: 5
     up_requests_sleep: 1
