@@ -90,5 +90,5 @@ class ElasticsearchStorage(object):
         pass
 
 
-def includme(config):
+def includeme(config):
     return ElasticsearchStorage(config)

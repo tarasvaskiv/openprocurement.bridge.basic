@@ -35,8 +35,10 @@ DEFAULTS = {
         "mode": "_all_",
         "limit": 1000
     },
+    'bridge_mode': 'basic',
     'resources_api_server': 'http://localhost:1234',
     'resources_api_version': "0",
+    'resources_api_token': '',
     'public_resources_api_server': 'http://localhost:1234',
     'resource': 'tenders',
     'workers_inc_threshold': 75,
@@ -55,3 +57,4 @@ DEFAULTS = {
     'queues_controller_timeout': 60,
     'perfomance_window': 300
 }
+PROCUREMENT_METHOD_TYPE_HANDLERS = {}

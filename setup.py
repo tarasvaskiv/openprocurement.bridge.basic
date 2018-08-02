@@ -32,8 +32,9 @@ entry_points = {
         'databridge = openprocurement.bridge.basic.databridge:main'
     ],
     'openprocurement.bridge.basic.storage_plugins': [
-        'couchdb = openprocurement.bridge.basic.storages.couchdb_plugin:includme',
-        'elasticsearch = openprocurement.bridge.basic.storages.elasticsearch_plugin:includme'
+        'couchdb = openprocurement.bridge.basic.storages.couchdb_plugin:includeme',
+        'elasticsearch = openprocurement.bridge.basic.storages.elasticsearch_plugin:includeme',
+        'redis = openprocurement.bridge.basic.storages.redis_plugin:includeme'
     ],
     'openprocurement.bridge.basic.filter_plugins': [
         'basic_couchdb = openprocurement.bridge.basic.filters:BasicCouchDBFilter',

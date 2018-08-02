@@ -21,7 +21,7 @@ from openprocurement_client.sync import ResourceFeeder
 from pkg_resources import iter_entry_points
 from yaml import load
 
-from openprocurement.bridge.basic.constants import DEFAULTS
+from openprocurement.bridge.basic.constants import DEFAULTS, PROCUREMENT_METHOD_TYPE_HANDLERS
 from openprocurement.bridge.basic.utils import DataBridgeConfigError
 
 
@@ -52,6 +52,7 @@ class BasicDataBridge(object):
         self.retrievers_params = self.config.get('retrievers_params')
         self.storage_type = self.config['storage_config'].get('storage_type', 'couchdb')
         self.worker_type = self.config['worker_config'].get('worker_type', 'basic_couchdb')
+        self.filter_type = self.config['filter_config'].get('filter_type', 'basic_couchdb')
 
         # Check up_wait_sleep
         up_wait_sleep = self.retrievers_params.get('up_wait_sleep')
@@ -90,10 +91,19 @@ class BasicDataBridge(object):
         else:
             raise DataBridgeConfigError('In config dictionary empty or missing \'resources_api_server\'')
 
+        worker_type = self.config['worker_config']['worker_type']
+
         # Connecting storage plugin
+        self.db = None
         for entry_point in iter_entry_points('openprocurement.bridge.basic.storage_plugins', self.storage_type):
             plugin = entry_point.load()
             self.db = plugin(self.config)
+
+        # Register contracting procurementMethodType handlers
+        if worker_type == 'contracting':
+            for entry_point in iter_entry_points('openprocurement.bridge.contracting.handlers'):
+                plugin = entry_point.load()
+                PROCUREMENT_METHOD_TYPE_HANDLERS[entry_point.name] = plugin(self.config, self.db)
 
         if hasattr(self, 'filter_type'):
             for entry_point in iter_entry_points('openprocurement.bridge.basic.filter_plugins', self.filter_type):
@@ -241,6 +251,7 @@ class BasicDataBridge(object):
 
         if len(self.workers_pool) < self.workers_min:
             for i in xrange(0, (self.workers_min - len(self.workers_pool))):
+                self.create_api_client()
                 w = self.worker_greenlet.spawn(self.api_clients_queue,
                                                self.resource_items_queue,
                                                self.db, self.config,
@@ -248,7 +259,6 @@ class BasicDataBridge(object):
                                                self.api_clients_info)
                 self.workers_pool.add(w)
                 logger.info('Watcher: Create main queue worker.')
-                self.create_api_client()
         retry_threads = self.retry_workers_max - self.retry_workers_pool.free_count()
         logger.info('Retry threads {}'.format(retry_threads), extra={'RETRY_THREADS': retry_threads})
         if len(self.retry_workers_pool) < self.retry_workers_min:

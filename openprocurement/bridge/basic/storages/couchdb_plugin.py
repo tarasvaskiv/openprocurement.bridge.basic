@@ -102,5 +102,5 @@ class CouchDBStorage(object):
         return results
 
 
-def includme(config):
+def includeme(config):
     return CouchDBStorage(config)
