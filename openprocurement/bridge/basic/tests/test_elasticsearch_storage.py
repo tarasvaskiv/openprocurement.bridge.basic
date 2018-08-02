@@ -4,8 +4,7 @@ from copy import deepcopy
 
 from mock import patch
 
-from openprocurement.bridge.basic.storages.elasticsearch_plugin import (ElasticsearchStorage,
-                                                                        includme)
+from openprocurement.bridge.basic.storages.elasticsearch_plugin import ElasticsearchStorage, includeme
 from openprocurement.bridge.basic.tests.base import TEST_CONFIG
 
 
@@ -130,10 +129,10 @@ class TestElasticsearchStorage(unittest.TestCase):
         self.assertEqual(db.doc_type, self.config['resource'])
 
     @patch('openprocurement.bridge.basic.storages.elasticsearch_plugin.Elasticsearch')
-    def test_includme(self, mocked_elastic):
+    def test_includeme(self, mocked_elastic):
         config = {'resource': 'lots'}
         self.assertIs(config.get('storage_obj'), None)
-        class_instance = includme(config)
+        class_instance = includeme(config)
         self.assertIsInstance(class_instance, ElasticsearchStorage)
 
 
