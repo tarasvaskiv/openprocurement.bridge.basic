@@ -91,17 +91,16 @@ class BasicDataBridge(object):
         else:
             raise DataBridgeConfigError('In config dictionary empty or missing \'resources_api_server\'')
 
-        worker_type = self.config['worker_config']['worker_type']
-
         # Connecting storage plugin
         self.db = None
         for entry_point in iter_entry_points('openprocurement.bridge.basic.storage_plugins', self.storage_type):
             plugin = entry_point.load()
             self.db = plugin(self.config)
 
-        # Register contracting procurementMethodType handlers
-        if worker_type == 'contracting':
-            for entry_point in iter_entry_points('openprocurement.bridge.contracting.handlers'):
+        # Register handlers
+        handlers = self.config.get('handlers', [])
+        for entry_point in iter_entry_points('openprocurement.bridge.basic.handlers'):
+            if not handlers or entry_point.name in handlers:
                 plugin = entry_point.load()
                 PROCUREMENT_METHOD_TYPE_HANDLERS[entry_point.name] = plugin(self.config, self.db)
 
