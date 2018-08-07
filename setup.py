@@ -18,6 +18,7 @@ requires = [
     'iso8601',
     'couchdb',
     'elasticsearch',
+    'redis'
 ]
 test_requires = requires + [
     'requests',

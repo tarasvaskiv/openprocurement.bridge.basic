@@ -14,6 +14,7 @@ from urlparse import urlparse
 
 import gevent.pool
 from gevent import sleep, spawn
+from gevent.event import Event
 from gevent.queue import PriorityQueue, Queue
 from openprocurement_client.client import TendersClient as APIClient
 from openprocurement_client.exceptions import RequestFailed
@@ -59,6 +60,11 @@ class BasicDataBridge(object):
         if up_wait_sleep is not None and up_wait_sleep < 30:
             raise DataBridgeConfigError(
                 'Invalid \'up_wait_sleep\' in \'retrievers_params\'. Value must be grater than 30.')
+
+        # Events
+        self.filter_event = Event()
+        self.worker_event = Event()
+        self.retry_worker_event = Event()
 
         # Pools
         self.workers_pool = gevent.pool.Pool(self.workers_max)
@@ -167,6 +173,7 @@ class BasicDataBridge(object):
         #     self.input_queue = self.resource_items_queue
         for resource_item in self.feeder.get_resource_items():
             self.input_queue.put(resource_item)
+            self.filter_event.set()
             logger.debug(
                 'Add to temp queue from sync: {} {} {}'.format(self.resource[:-1],
                                                                resource_item[1]['id'],
@@ -205,7 +212,9 @@ class BasicDataBridge(object):
                                                self.resource_items_queue,
                                                self.db, self.config,
                                                self.retry_resource_items_queue,
-                                               self.api_clients_info)
+                                               self.api_clients_info,
+                                               self.worker_event,
+                                               self.retry_worker_event)
                 self.workers_pool.add(w)
                 logger.info('Queue controller: Create main queue worker.')
             elif (self.resource_items_queue.qsize() <
@@ -214,6 +223,7 @@ class BasicDataBridge(object):
                 if len(self.workers_pool) > self.workers_min:
                     wi = self.workers_pool.greenlets.pop()
                     wi.shutdown()
+                    self.worker_event.set()
                     api_client_dict = self.api_clients_queue.get()
                     del self.api_clients_info[api_client_dict['id']]
                     logger.info('Queue controller: Kill main queue worker.')
@@ -241,8 +251,9 @@ class BasicDataBridge(object):
             fill_threads = 0
             logger.error('Fill thread error: {}'.format(self.queue_filter.exception.message),
                          extra={'MESSAGE_ID': 'exception'})
-            self.queue_filter = self.filter_greenlet.spawn(self.config, self.input_queue,
-                                                           self.resource_items_queue, self.db)
+            self.queue_filter = self.filter_greenlet.spawn(self.config, self.input_queue, self.resource_items_queue,
+                                                           self.db, self.filter_event, self.worker_event)
+
         logger.info('Filter threads {}'.format(fill_threads), extra={'FILTER_THREADS': fill_threads})
 
         main_threads = self.workers_max - self.workers_pool.free_count()
@@ -255,7 +266,9 @@ class BasicDataBridge(object):
                                                self.resource_items_queue,
                                                self.db, self.config,
                                                self.retry_resource_items_queue,
-                                               self.api_clients_info)
+                                               self.api_clients_info,
+                                               self.worker_event,
+                                               self.retry_worker_event)
                 self.workers_pool.add(w)
                 logger.info('Watcher: Create main queue worker.')
         retry_threads = self.retry_workers_max - self.retry_workers_pool.free_count()
@@ -267,7 +280,9 @@ class BasicDataBridge(object):
                                                self.retry_resource_items_queue,
                                                self.db, self.config,
                                                self.retry_resource_items_queue,
-                                               self.api_clients_info)
+                                               self.api_clients_info,
+                                               self.retry_worker_event,
+                                               self.retry_worker_event)
                 self.retry_workers_pool.add(w)
                 logger.info('Watcher: Create retry queue worker.')
 
@@ -347,10 +362,11 @@ class BasicDataBridge(object):
         logger.info('Start data sync...', extra={'MESSAGE_ID': 'basic_bridge__data_sync'})
         self.input_queue_filler = spawn(self.fill_input_queue)
         if hasattr(self, 'filter_greenlet'):
-            self.queue_filter = self.filter_greenlet.spawn(self.config, self.input_queue,
-                                                           self.resource_items_queue, self.db)
+            self.queue_filter = self.filter_greenlet.spawn(self.config, self.input_queue, self.resource_items_queue,
+                                                           self.db, self.filter_event, self.worker_event)
         else:
             self.resource_items_queue = self.input_queue
+            self.filter_event = self.worker_event
         spawn(self.queues_controller)
         while True:
             self.gevent_watcher()
