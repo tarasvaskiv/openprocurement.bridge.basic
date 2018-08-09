@@ -166,7 +166,7 @@ class TestBasicDataBridge(unittest.TestCase):
 
         del bridge
 
-    @patch('openprocurement_client.api_base_client.Session')
+    @patch('openprocurement_client.templates.Session')
     def test__get_average_request_duration(self, mocked_session):
         mocked_session.request.return_value = MockedResponse(200)
         bridge = BasicDataBridge(self.config)
@@ -212,7 +212,7 @@ class TestBasicDataBridge(unittest.TestCase):
         stdev = bridge._calculate_st_dev([])
         self.assertEqual(stdev, 0)
 
-    @patch('openprocurement_client.api_base_client.Session')
+    @patch('openprocurement_client.templates.Session')
     def test__mark_bad_clients(self, mocked_session):
         mocked_session.request.return_value = MockedResponse(200)
         bridge = BasicDataBridge(self.config)
@@ -243,7 +243,7 @@ class TestBasicDataBridge(unittest.TestCase):
                 to_destroy += 1
         self.assertEqual(to_destroy, 3)
 
-    @patch('openprocurement_client.api_base_client.Session')
+    @patch('openprocurement_client.templates.Session')
     def test_perfomance_watcher(self, mocked_session):
         mocked_session.request.return_value = MockedResponse(200)
         bridge = BasicDataBridge(self.config)
