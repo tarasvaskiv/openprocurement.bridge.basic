@@ -4,7 +4,6 @@ monkey.patch_all()
 
 import unittest
 import datetime
-import os
 import logging
 import uuid
 from copy import deepcopy
@@ -14,112 +13,50 @@ from couchdb import Server
 from mock import MagicMock, patch
 from munch import munchify
 from openprocurement_client.exceptions import RequestFailed
+
 from openprocurement.bridge.basic.databridge import BasicDataBridge
 from openprocurement.bridge.basic.storages.couchdb_plugin import CouchDBStorage
 from openprocurement.bridge.basic.utils import DataBridgeConfigError
+from openprocurement.bridge.basic.tests.base import MockedResponse, AlmostAlwaysTrue, TEST_CONFIG
 
 
 logger = logging.getLogger()
 logger.level = logging.DEBUG
 
 
-class AlmostAlwaysTrue(object):
-
-    def __init__(self, total_iterations=1):
-        self.total_iterations = total_iterations
-        self.current_iteration = 0
-
-    def __nonzero__(self):
-        if self.current_iteration < self.total_iterations:
-            self.current_iteration += 1
-            return bool(1)
-        return bool(0)
-
-
 class TestBasicDataBridge(unittest.TestCase):
 
-    config = {
-        'main': {
-            'resources_api_server':
-                'https://lb.api-sandbox.openprocurement.org',
-            'resources_api_version': "0",
-            'public_resources_api_server':
-                'https://lb.api-sandbox.openprocurement.org',
-            'retrieve_mode': '_all_',
-            'workers_inc_threshold': 75,
-            'workers_dec_threshold': 35,
-            'workers_min': 0,
-            'workers_max': 2,
-            'retry_workers_min': 1,
-            'retry_workers_max': 2,
-            'retry_resource_items_queue_size': -1,
-            'client_inc_step_timeout': 0.1,
-            'client_dec_step_timeout': 0.02,
-            'drop_threshold_client_cookies': 2,
-            'worker_sleep': 0.1,
-            'retry_default_timeout': 0.1,
-            'retries_count': 10,
-            'queue_timeout': 0.01,
-            'bulk_save_limit': 3,
-            'bulk_save_interval': 1,
-            'filter_workers_count': 1,
-            'watch_interval': 0.1,
-            'user_agent': 'basicbridge.multi',
-            'resource_items_queue_size': -1,
-            'input_queue_size': 10000,
-            'resource_items_limit': 1000,
-            'queues_controller_timeout': 0.01,
-            'bulk_query_limit': 1,
-            'bulk_query_interval': 0.5,
-            'storage_db': 'couchdb',
-            'storage': {
-                'host': "127.0.0.1",
-                'port': 5984,
-                'user': "",
-                'password': "",
-                'db_name': 'test_db'
-            },
-            'retrievers_params': {
-                'down_requests_sleep': 5,
-                'up_requests_sleep': 1,
-                'up_wait_sleep': 30,
-                'queue_size': 101
-            },
-            'perfomance_window': 0.1,
-            'resource': 'lots'
-        },
-        'version': 1
-    }
+    config = deepcopy(TEST_CONFIG)
 
     def setUp(self):
-        user = self.config['main']['storage'].get('user', '')
-        password = self.config['main']['storage'].get('password', '')
+        user = self.config['main']['storage_config'].get('user', '')
+        password = self.config['main']['storage_config'].get('password', '')
         if (user and password):
             self.couch_url = "http://{user}:{password}@{host}:{port}".format(
-                **self.config['main']['storage'])
+                **self.config['main']['storage_config'])
         else:
             self.couch_url = "http://{host}:{port}".format(
-                **self.config['main']['storage'])
+                **self.config['main']['storage_config'])
         server = Server(self.couch_url)
-        if self.config['main']['storage']['db_name'] in server:
-            self.db = server[self.config['main']['storage']['db_name']]
+        if self.config['main']['storage_config']['db_name'] in server:
+            self.db = server[self.config['main']['storage_config']['db_name']]
         else:
-            self.db = server.create(self.config['main']['storage']['db_name'])
+            self.db = server.create(self.config['main']['storage_config']['db_name'])
 
     def tearDown(self):
-        user = self.config['main']['storage'].get('user', '')
-        password = self.config['main']['storage'].get('password', '')
+        user = self.config['main']['storage_config'].get('user', '')
+        password = self.config['main']['storage_config'].get('password', '')
         if (user and password):
             couch_url = "http://{user}:{password}@{host}:{port}".format(
-                **self.config['main']['storage'])
+                **self.config['main']['storage_config'])
         else:
             couch_url = "http://{host}:{port}".format(
-                **self.config['main']['storage'])
+                **self.config['main']['storage_config'])
         try:
             server = Server(couch_url)
-            del server[self.config['main']['storage']['db_name']]
-        except:
-            pass
+            del server[self.config['main']['storage_config']['db_name']]
+        except Exception:
+            logger.debug('Error while tearDown')
 
     def test_init(self):
         bridge = BasicDataBridge(self.config)
@@ -134,16 +71,13 @@ class TestBasicDataBridge(unittest.TestCase):
             BasicDataBridge(config)
         self.assertEqual(
             e.exception.message,
-            "In config dictionary empty or missing 'resource_api_server'"
+            "In config dictionary empty or missing 'resources_api_server'"
         )
 
         config['main']['resources_api_server'] = 'invalid_server'
         with self.assertRaises(DataBridgeConfigError) as e:
             BasicDataBridge(config)
-        self.assertEqual(
-            e.exception.message,
-            "Invalid 'resource_api_server' url."
-        )
+        self.assertEqual(e.exception.message, "Invalid 'resources_api_server' url.")
 
         config = deepcopy(self.config)
         config['main']['retrievers_params']['up_wait_sleep'] = 29.9
@@ -151,8 +85,7 @@ class TestBasicDataBridge(unittest.TestCase):
             BasicDataBridge(config)
         self.assertEqual(
             e.exception.message,
-            "Invalid 'up_wait_sleep' in 'retrievers_params'. Value must be "
-            "grater than 30."
+            "Invalid 'up_wait_sleep' in 'retrievers_params'. Value must be grater than 30."
         )
 
     @patch('openprocurement.bridge.basic.databridge.APIClient')
@@ -165,77 +98,23 @@ class TestBasicDataBridge(unittest.TestCase):
 
     def test_fill_input_queue(self):
         bridge = BasicDataBridge(self.config)
-        return_value = [
-            {'id': uuid.uuid4().hex,
-             'dateModified': datetime.datetime.utcnow().isoformat()}
-        ]
+        return_value = [(
+            1, {'id': uuid.uuid4().hex,
+                'dateModified': datetime.datetime.utcnow().isoformat()}
+        )]
         bridge.feeder.get_resource_items = MagicMock(return_value=return_value)
         self.assertEqual(bridge.input_queue.qsize(), 0)
         bridge.fill_input_queue()
         self.assertEqual(bridge.input_queue.qsize(), 1)
         self.assertEqual(bridge.input_queue.get(), return_value[0])
 
-    def test_send_bulk(self):
-        old_date_modified = datetime.datetime.utcnow().isoformat()
-        id_1 = uuid.uuid4().hex
-        date_modified_1 = datetime.datetime.utcnow().isoformat()
-        id_2 = uuid.uuid4().hex
-        date_modified_2 = datetime.datetime.utcnow().isoformat()
-        input_dict = {id_1: date_modified_1, id_2: date_modified_2}
-        return_value = [
-            munchify({'id': id_1, 'key': date_modified_1}),
-            munchify({'id': id_2, 'key': old_date_modified})
-        ]
-        bridge = BasicDataBridge(self.config)
-        bridge.db.db.view = MagicMock(return_value=return_value)
-        self.assertEqual(bridge.resource_items_queue.qsize(), 0)
-        bridge.send_bulk(input_dict)
-        self.assertEqual(bridge.resource_items_queue.qsize(), 1)
-        bridge.db.db.view.side_effect = [Exception(), Exception(),
-                                      Exception('test')]
-        input_dict = {}
-        with self.assertRaises(Exception) as e:
-            bridge.send_bulk(input_dict)
-        self.assertEqual(e.exception.message, 'test')
-
-    def test_fill_resource_items_queue(self):
-        bridge = BasicDataBridge(self.config)
-        db_dict_list = [
-            {
-                'id': uuid.uuid4().hex,
-                'dateModified': datetime.datetime.utcnow().isoformat()
-            },
-            {
-                'id': uuid.uuid4().hex,
-                'dateModified': datetime.datetime.utcnow().isoformat()
-            }]
-        with patch('__builtin__.True', AlmostAlwaysTrue(1)):
-            bridge.fill_resource_items_queue()
-        self.assertEqual(bridge.resource_items_queue.qsize(), 0)
-
-        for item in db_dict_list:
-            bridge.input_queue.put({
-                'id': item['id'],
-                'dateModified': datetime.datetime.utcnow().isoformat()
-            })
-        view_return_list = [
-            munchify({
-                'id': db_dict_list[0]['id'],
-                'key': db_dict_list[0]['dateModified']
-            })
-        ]
-        bridge.db.db.view = MagicMock(return_value=view_return_list)
-        with patch('__builtin__.True', AlmostAlwaysTrue(1)):
-            bridge.fill_resource_items_queue()
-        self.assertEqual(bridge.resource_items_queue.qsize(), 1)
-
     @patch('openprocurement.bridge.basic.databridge.spawn')
-    @patch('openprocurement.bridge.basic.databridge.ResourceItemWorker.spawn')
+    @patch('openprocurement.bridge.basic.workers.BasicResourceItemWorker.spawn')
     @patch('openprocurement.bridge.basic.databridge.APIClient')
     def test_gevent_watcher(self, mock_APIClient, mock_riw_spawn, mock_spawn):
         bridge = BasicDataBridge(self.config)
-        bridge.filler = MagicMock()
-        bridge.filler.exception = Exception('test_filler')
+        bridge.queue_filter = MagicMock()
+        bridge.queue_filter.exception = Exception('test_filler')
         bridge.input_queue_filler = MagicMock()
         bridge.input_queue_filler.exception = Exception('test_temp_filler')
         self.assertEqual(bridge.workers_pool.free_count(),
@@ -250,7 +129,7 @@ class TestBasicDataBridge(unittest.TestCase):
         del bridge
 
     @patch('openprocurement.bridge.basic.databridge.APIClient')
-    @patch('openprocurement.bridge.basic.databridge.ResourceItemWorker.spawn')
+    @patch('openprocurement.bridge.basic.workers.BasicResourceItemWorker.spawn')
     def test_queues_controller(self, mock_riw_spawn, mock_APIClient):
         bridge = BasicDataBridge(self.config)
         bridge.resource_items_queue_size = 10
@@ -274,9 +153,12 @@ class TestBasicDataBridge(unittest.TestCase):
 
     @patch('openprocurement.bridge.basic.databridge.APIClient')
     def test_create_api_client(self, mock_APIClient):
-        mock_APIClient.side_effect = [RequestFailed(), munchify({
-            'session': {'headers': {'User-Agent': 'test.agent'}}
-        })]
+        mock_APIClient.side_effect = [
+            RequestFailed(), Exception('Test create client exception'),
+            munchify({
+                'session': {'headers': {'User-Agent': 'test.agent'}}
+            })
+        ]
         bridge = BasicDataBridge(self.config)
         self.assertEqual(bridge.api_clients_queue.qsize(), 0)
         bridge.create_api_client()
@@ -284,8 +166,9 @@ class TestBasicDataBridge(unittest.TestCase):
 
         del bridge
 
-    @patch('openprocurement.bridge.basic.databridge.APIClient')
-    def test__get_average_request_duration(self, mocked_api_client):
+    @patch('openprocurement_client.templates.Session')
+    def test__get_average_request_duration(self, mocked_session):
+        mocked_session.request.return_value = MockedResponse(200)
         bridge = BasicDataBridge(self.config)
         bridge.create_api_client()
         bridge.create_api_client()
@@ -329,7 +212,9 @@ class TestBasicDataBridge(unittest.TestCase):
         stdev = bridge._calculate_st_dev([])
         self.assertEqual(stdev, 0)
 
-    def test__mark_bad_clients(self):
+    @patch('openprocurement_client.templates.Session')
+    def test__mark_bad_clients(self, mocked_session):
+        mocked_session.request.return_value = MockedResponse(200)
         bridge = BasicDataBridge(self.config)
         self.assertEqual(bridge.api_clients_queue.qsize(), 0)
         self.assertEqual(len(bridge.api_clients_info), 0)
@@ -358,7 +243,9 @@ class TestBasicDataBridge(unittest.TestCase):
                 to_destroy += 1
         self.assertEqual(to_destroy, 3)
 
-    def test_perfomance_watcher(self):
+    @patch('openprocurement_client.templates.Session')
+    def test_perfomance_watcher(self, mocked_session):
+        mocked_session.request.return_value = MockedResponse(200)
         bridge = BasicDataBridge(self.config)
         for i in xrange(0, 3):
             bridge.create_api_client()
@@ -386,23 +273,15 @@ class TestBasicDataBridge(unittest.TestCase):
         self.assertEqual(grown, 3)
         self.assertEqual(with_new_cookies, 1)
 
-    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
-           'fill_input_queue')
-    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
-           'fill_resource_items_queue')
-    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
-           'queues_controller')
-    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
-           'perfomance_watcher')
-    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.'
-           'gevent_watcher')
-    def test_run(self, mock_gevent, mock_perfomance, mock_controller,
-                 mock_fill, mock_fill_input_queue):
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.fill_input_queue')
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.queues_controller')
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.perfomance_watcher')
+    @patch('openprocurement.bridge.basic.databridge.BasicDataBridge.gevent_watcher')
+    def test_run(self, mock_gevent, mock_perfomance, mock_controller, mock_fill_input_queue):
         bridge = BasicDataBridge(self.config)
         self.assertEqual(len(bridge.filter_workers_pool), 0)
         with patch('__builtin__.True', AlmostAlwaysTrue(4)):
             bridge.run()
-        self.assertEqual(mock_fill.call_count, 1)
         self.assertEqual(mock_controller.call_count, 1)
         self.assertEqual(mock_gevent.call_count, 1)
         self.assertEqual(mock_fill_input_queue.call_count, 1)

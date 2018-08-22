@@ -12,7 +12,7 @@ cache:
   directories:
     - eggs
 before_install:
-  - pip install setuptools python-coveralls
+  - pip install setuptools python-coveralls gevent urllib3==1.22
   - python2 bootstrap.py
 install:
   - bin/buildout -N
