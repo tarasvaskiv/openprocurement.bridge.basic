@@ -4,12 +4,29 @@ from copy import deepcopy
 from datetime import datetime
 from uuid import uuid4
 
+import jmespath
 from gevent.queue import PriorityQueue
-from mock import MagicMock, patch
+from mock import MagicMock, patch, call
 from munch import munchify
 
-from openprocurement.bridge.basic.filters import BasicCouchDBFilter, BasicElasticSearchFilter
+from openprocurement.bridge.basic.filters import (
+    BasicCouchDBFilter,
+    BasicElasticSearchFilter,
+    JMESPathFilter,
+)
 from openprocurement.bridge.basic.tests.base import TEST_CONFIG
+
+
+CONFIG = {
+    'filter_config': {
+        'statuses': [],
+        'procurementMethodTypes': [],
+        'lot_status': None,
+        'timeout': 0,
+        'filters': [],
+    },
+    'resource': 'tenders'
+}
 
 
 class TestBasicCouchDBFilter(unittest.TestCase):
@@ -129,10 +146,84 @@ class TestBasicElasticSearchFilter(unittest.TestCase):
         self.assertEqual(queue.qsize(), 2)
 
 
+class TestResourceFilters(unittest.TestCase):
+    db = {}
+    conf = CONFIG
+
+    @patch('openprocurement.bridge.basic.filters.INFINITY')
+    @patch('openprocurement.bridge.basic.filters.logger')
+    def test_JMESPathFilter(self, logger, infinity):
+        self.input_queue = PriorityQueue()
+        self.filtered_queue = PriorityQueue()
+
+        resource = self.conf['resource'][:-1]
+        jmes_filter = JMESPathFilter(self.conf, self.input_queue, self.filtered_queue, self.db)
+        mock_calls = [call.info('Init Close Framework Agreement JMESPath Filter.')]
+        self.assertEqual(logger.mock_calls, mock_calls)
+        extra = {'MESSAGE_ID': 'SKIPPED', 'JOURNAL_{}_ID'.format(resource.upper()): 'test_id'}
+
+        infinity.__nonzero__.side_effect = [True, False]
+        jmes_filter._run()
+
+        doc = {
+            'id': 'test_id',
+            'dateModified': '1970-01-01',
+            'status': 'draft.pending'
+        }
+
+        self.input_queue.put((None, doc))
+        self.db['test_id'] = '1970-01-01'
+        infinity.__nonzero__.side_effect = [True, False]
+        jmes_filter._run()
+        mock_calls.append(
+            call.info('{} test_id not modified from last check. Skipping'.format(resource.title()),
+                      extra=extra)
+        )
+        self.assertEqual(logger.mock_calls, mock_calls)
+
+        # no filters
+        doc['dateModified'] = '1970-01-02'
+        self.input_queue.put((None, doc))
+        infinity.__nonzero__.side_effect = [True, False]
+        jmes_filter._run()
+        mock_calls.append(
+            call.debug('Put to filtered queue {} test_id {}'.format(resource, doc['status']))
+        )
+        self.assertEqual(logger.mock_calls, mock_calls)
+        priority, filtered_doc = self.filtered_queue.get()
+        self.assertIsNone(priority)
+        self.assertEqual(filtered_doc, doc)
+
+        # not found
+        jmes_filter.filters = [jmespath.compile("contains([`test_status`], status)")]
+        doc['status'] = 'spam_status'
+        self.input_queue.put((None, doc))
+        infinity.__nonzero__.side_effect = [True, False]
+        jmes_filter._run()
+        mock_calls.append(
+            call.info('Skip {} test_id'.format(resource),
+                      extra=extra)
+        )
+
+        # has found
+        doc['status'] = 'test_status'
+        self.input_queue.put((None, doc))
+        infinity.__nonzero__.side_effect = [True, False]
+        jmes_filter._run()
+        mock_calls.append(
+            call.debug('Put to filtered queue {} test_id {}'.format(resource, doc['status']))
+        )
+        self.assertEqual(logger.mock_calls, mock_calls)
+        priority, filtered_doc = self.filtered_queue.get()
+        self.assertIsNone(priority)
+        self.assertEqual(filtered_doc, doc)
+
+
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(TestBasicCouchDBFilter))
     suite.addTest(unittest.makeSuite(TestBasicElasticSearchFilter))
+    suite.addTest(unittest.makeSuite(TestResourceFilters))
     return suite
 
 

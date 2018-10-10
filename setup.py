@@ -18,6 +18,7 @@ requires = [
     'iso8601',
     'couchdb',
     'elasticsearch',
+    'jmespath',
 ]
 test_requires = requires + [
     'requests',
@@ -39,10 +40,12 @@ entry_points = {
     ],
     'openprocurement.bridge.basic.filter_plugins': [
         'basic_couchdb = openprocurement.bridge.basic.filters:BasicCouchDBFilter',
-        'basic_elasticsearch = openprocurement.bridge.basic.filters:BasicElasticSearchFilter'
+        'basic_elasticsearch = openprocurement.bridge.basic.filters:BasicElasticSearchFilter',
+        'jmespath = openprocurement.bridge.basic.filters:JMESPathFilter'
     ],
     'openprocurement.bridge.basic.worker_plugins': [
-        'basic_couchdb = openprocurement.bridge.basic.workers:BasicResourceItemWorker'
+        'basic_couchdb = openprocurement.bridge.basic.workers:BasicResourceItemWorker',
+        'contracting = openprocurement.bridge.basic.workers:AgreementWorker'
     ],
     'openprocurement.tests': [
         'bridge.basic = openprocurement.bridge.basic.tests.main:suite'

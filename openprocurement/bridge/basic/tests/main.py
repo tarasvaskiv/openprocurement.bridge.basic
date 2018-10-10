@@ -3,7 +3,7 @@
 import unittest
 
 from openprocurement.bridge.basic.tests import (
-    databridge, workers, test_couchdb_storage, test_elasticsearch_storage, filters
+    databridge, workers, test_couchdb_storage, test_elasticsearch_storage, filters, utils, handlers
 )
 
 
@@ -14,6 +14,8 @@ def suite():
     tests.addTest(filters.suite())
     tests.addTest(test_couchdb_storage.suite())
     tests.addTest(test_elasticsearch_storage.suite())
+    tests.addTest(utils.suite())
+    tests.addTest(handlers.suite())
     return tests
 
 
